@@ -8,6 +8,7 @@ from core.engine import GameTheoryEngine
 from core.models import MarketSnapshot
 from ws.binance_ws import BinanceFeedThread
 from simulation.paper import PaperSimulator
+from signal_engine import SignalEngine
 from ui.dashboard import DashboardWindow
 
 
@@ -17,6 +18,7 @@ class AppController:
         self.snapshot = MarketSnapshot()
         self.engine = GameTheoryEngine()
         self.sim = PaperSimulator()
+        self.signals = SignalEngine()
         self.feed = BinanceFeedThread()
         self.feed.market_event.connect(self.on_market_event)
         self.feed.status.connect(self.on_status)
@@ -29,7 +31,8 @@ class AppController:
         if event.get("type") != "agg_trade":
             return
         self.snapshot = self.engine.update(self.snapshot, event)
-        sim_state = self.sim.step(self.snapshot)
+        signal = self.signals.evaluate(self.snapshot)
+        sim_state = self.sim.step(self.snapshot, signal)
         self.window.render(self.snapshot, sim_state)
 
     def run(self) -> None:
