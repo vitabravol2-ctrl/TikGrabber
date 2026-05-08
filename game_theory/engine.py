@@ -19,6 +19,21 @@ class GameTheoryModule:
         long_p = 50.0 + metrics.order_book_imbalance * 35.0 + (metrics.aggressive_buy_pressure - 0.5) * 45.0
         short_p = 50.0 - metrics.order_book_imbalance * 35.0 + (metrics.aggressive_sell_pressure - 0.5) * 45.0
 
+        if metrics.absorption == "SELL_ABSORPTION" and metrics.stable_bid_wall:
+            long_p += 11.0
+            short_p -= 5.0
+        if metrics.absorption == "BUY_ABSORPTION" and metrics.stable_ask_wall:
+            short_p += 11.0
+            long_p -= 5.0
+        if metrics.exhaustion == "BUY_EXHAUSTION":
+            short_p += 8.0
+        if metrics.exhaustion == "SELL_EXHAUSTION":
+            long_p += 8.0
+        if metrics.liquidity_pull == "LIQUIDITY_PULL_ASK":
+            long_p += 5.0
+        if metrics.liquidity_pull == "LIQUIDITY_PULL_BID":
+            short_p += 5.0
+
         if state in {MarketState.SWEEP_DOWN, MarketState.SWEEP_UP, MarketState.TRAP}:
             trap = min(100.0, 35.0 + metrics.volume_burst * 45.0 + metrics.liquidity_shift * 20.0)
         else:
@@ -26,5 +41,5 @@ class GameTheoryModule:
 
         long_p = max(0.0, min(100.0, long_p))
         short_p = max(0.0, min(100.0, short_p))
-        edge = max(-100.0, min(100.0, long_p - short_p - trap * 0.2))
+        edge = max(-100.0, min(100.0, long_p - short_p - trap * 0.2 + (metrics.microstructure_score - 50.0) * 0.4))
         return GameTheorySignal(long_pressure=long_p, short_pressure=short_p, trap_probability=trap, edge_score=edge)

@@ -17,6 +17,12 @@ class ReplayState:
     worst_state: str = "N/A"
     net_result: float = 0.0
     risk_block_reasons: dict[str, int] = field(default_factory=dict)
+    best_execution_quality: float = 0.0
+    worst_execution_quality: float = 100.0
+    avg_execution_quality: float = 0.0
+    avg_slippage: float = 0.0
+    best_liquidity_state: str = "N/A"
+    worst_liquidity_state: str = "N/A"
 
 
 class ReplayEventStore:

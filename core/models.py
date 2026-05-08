@@ -95,6 +95,12 @@ class SimulationState:
     last_net_ticks: float = 0.0
     accepted_signal_id: int | None = None
     replay: ReplayState = field(default_factory=ReplayState)
+    avg_slippage: float = 0.0
+    avg_execution_quality: float = 0.0
+    execution_quality: float = 100.0
+    queue_delay_ms: float = 0.0
+    partial_fills: int = 0
+    missed_fills: int = 0
 
 
 @dataclass
