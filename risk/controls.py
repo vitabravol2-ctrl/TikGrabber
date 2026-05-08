@@ -14,6 +14,7 @@ class FuturesRiskControls:
     min_liquidity_tps: float = 2.0
     min_liquidation_buffer_pct: float = 2.5
     min_signal_strength: float = 70.0
+    safety_buffer_ticks: float = 1.0
 
     def evaluate_entry(
         self,
@@ -26,7 +27,7 @@ class FuturesRiskControls:
             return False, snap.data_quality_reason
         if not snap.can_trade_data:
             return False, snap.data_quality_reason
-        if snap.book_status not in {"OK", "Missing"}:
+        if snap.book_status not in {"OK", "Missing", "OK_FALLBACK"}:
             return False, "UNKNOWN_BOOK" if snap.book_status == "Unknown" else "BOOK_NOT_OK"
         if snap.depth_status not in {"OK", "Missing"}:
             return False, "DEPTH_NOT_OK"
@@ -50,8 +51,14 @@ class FuturesRiskControls:
                 return False, "NOISE_NOT_LOW"
             if snap.edge_stability != "STABLE":
                 return False, "EDGE_UNSTABLE"
-            if snap.expected_move_ticks < (snap.min_profitable_ticks + 1.0):
+            if snap.expected_move_ticks < (snap.min_profitable_ticks + self.safety_buffer_ticks):
                 return False, "MOVE_TOO_SMALL"
+            if snap.net_edge_score < 25:
+                return False, "EDGE_TOO_LOW"
+            if snap.best_direction in {"LONG", "SHORT"}:
+                signal_dir = "LONG" if snap.edge_score >= 0 else "SHORT"
+                if signal_dir != snap.best_direction:
+                    return False, "DIRECTION_CONFLICT"
         if snap.spread <= 0 or snap.spread > self.max_spread:
             return False, "SPREAD"
         if abs(snap.velocity) > self.max_volatility:

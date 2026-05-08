@@ -32,6 +32,8 @@ class DataQualityGate:
         warmup_elapsed = max(0.0, now_ms - first_seen_ms) if first_seen_ms > 0 and now_ms > 0 else self.book_warmup_grace_ms + 1.0
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
+        if str(event.get("book_status", "")).lower() == "ok_fallback":
+            return {"data_quality": "Good", "data_quality_reason": "BOOK_FALLBACK_DEPTH_TOP", "book_status": "OK_FALLBACK", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": depth_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": depth_ready}
         if book_age_ms < 0:
             if warmup_elapsed <= self.book_warmup_grace_ms:
                 return {"data_quality": "Warmup", "data_quality_reason": "WARMUP_BOOK", "book_status": "Warmup", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
