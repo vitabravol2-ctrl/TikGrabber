@@ -29,6 +29,7 @@ class AppController:
         self.engine = GameTheoryEngine()
         self.validator = SignalValidationEngine()
         self.sim = PaperSimulator(on_trade_closed=self.validator.resolve_signal)
+        self.sim.apply_profile("REALISTIC_FUTURES_1000")
         self.decision_engine = SignalDecisionEngine()
         self.feed = BinanceFeedThread()
         self.feed.market_event.connect(self.on_market_event)
@@ -102,8 +103,8 @@ class AppController:
         self.snapshot.funding_buffer_usdt = breakdown.funding_buffer
         self.snapshot.net_expected_profit_after_costs = breakdown.net_profit_after_costs * direction_sign if direction_sign > 0 else breakdown.net_profit_after_costs
         self.snapshot.minimum_real_move_usdt = breakdown.required_gross_move_usdt
-        self.snapshot.tp_target_usdt = breakdown.required_gross_move_usdt * self.sim.scalp.safety_profit_multiplier
-        self.snapshot.sl_target_usdt = min(max(self.snapshot.tp_target_usdt * 0.8, self.snapshot.tp_target_usdt * 0.8), self.snapshot.tp_target_usdt * 1.2)
+        self.snapshot.tp_target_usdt = self.sim.scalp.tp_price_move_usdt if self.sim.scalp.tp_price_move_usdt > 0 else breakdown.required_gross_move_usdt * self.sim.scalp.safety_profit_multiplier
+        self.snapshot.sl_target_usdt = self.sim.scalp.sl_price_move_usdt if self.sim.scalp.sl_price_move_usdt > 0 else min(max(self.snapshot.tp_target_usdt * 0.8, self.snapshot.tp_target_usdt * 0.8), self.snapshot.tp_target_usdt * 1.2)
 
         opp = self.opportunity_engine.evaluate(self.snapshot, self.sim.scalp.order_notional_usdt)
         self.snapshot.continuation_strength = opp.continuation_strength
@@ -136,7 +137,7 @@ class AppController:
         allowed = True
         reason = "PASS"
         if signal.value != "NONE":
-            allowed, reason = self.risk.evaluate_entry(self.snapshot, self.position, 1.0, self.sim.state.cooldown_active)
+            allowed, reason = self.risk.evaluate_entry(self.snapshot, self.position, 1.0, self.sim.state.cooldown_active, profile=self.sim.scalp.profile)
             if not allowed:
                 self.snapshot.block_reason = reason
                 if reason == "NO_REAL_PROFIT":
