@@ -257,6 +257,7 @@ class DashboardWindow(QMainWindow):
         lay.addLayout(cards)
         lay.addWidget(self._build_active_trade_panel())
         lay.addWidget(self._build_futures_status_panel())
+        lay.addWidget(self._build_replay_status_panel())
         lay.addStretch(1)
         return panel
 
@@ -286,6 +287,23 @@ class DashboardWindow(QMainWindow):
             "slippage": QLabel("Slippage: ON"),
         }
         for lbl in self.futures_status.values():
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size:12px;")
+            lay.addWidget(lbl)
+        return panel
+
+    def _build_replay_status_panel(self) -> QFrame:
+        panel, lay = self._panel("REPLAY / BACKTEST")
+        self.replay_status = {
+            "mode": QLabel("Mode: LIVE WS"),
+            "events": QLabel("Events: 0"),
+            "speed": QLabel("Speed: 1.0x"),
+            "accepted": QLabel("Accepted: 0"),
+            "blocked": QLabel("Blocked: 0"),
+            "net": QLabel("Net: 0.00"),
+            "state": QLabel("Best/Worst: N/A / N/A"),
+        }
+        for lbl in self.replay_status.values():
             lbl.setWordWrap(True)
             lbl.setStyleSheet("font-size:12px;")
             lay.addWidget(lbl)
@@ -368,6 +386,14 @@ class DashboardWindow(QMainWindow):
         self.futures_status["execution"].setText("Execution: SIMULATED")
         self.futures_status["fees"].setText("Fees: ON")
         self.futures_status["slippage"].setText("Slippage: ON")
+
+        self.replay_status["mode"].setText(f"Mode: {sim.replay.mode}")
+        self.replay_status["events"].setText(f"Events: {sim.replay.events_processed}")
+        self.replay_status["speed"].setText(f"Speed: {sim.replay.replay_speed:.1f}x")
+        self.replay_status["accepted"].setText(f"Accepted: {sim.replay.accepted_signals}")
+        self.replay_status["blocked"].setText(f"Blocked: {sim.replay.blocked_signals}")
+        self.replay_status["net"].setText(f"Net: {sim.replay.net_result:+.2f}")
+        self.replay_status["state"].setText(f"Best/Worst: {sim.replay.best_state} / {sim.replay.worst_state}")
 
         if sim.last_event in {"ENTRY", "TP", "SL"}:
             effect = QGraphicsOpacityEffect(self.signal_status)
