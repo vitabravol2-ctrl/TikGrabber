@@ -11,10 +11,12 @@ def arm_progress(prev_dir, prev_regime, prev_ticks, required, signal_value, regi
     return signal_value, regime, ticks, ticks >= required
 
 
-def test_unknown_book_conflict_detected():
+def test_book_conflict_not_possible_when_bookticker_seen_and_book_age_fresh():
     dq = DataQualityGate()
     event = {"book_age_ms": -1.0, "depth_age_ms": 100.0, "bid": 100.0, "ask": 100.1, "bid_volume_total": 1.0, "ask_volume_total": 1.0, "book_ready": True, "depth_ready": True, "ws_streams_seen": ["bookTicker", "depth"], "first_event_ts_ms": 0.0, "now_ms": 9999.0}
-    assert dq.evaluate(event, tick_speed=5.0)["data_quality_reason"] == "BOOK_CONFLICT"
+    out = dq.evaluate(event, tick_speed=5.0)
+    assert out["data_quality_reason"] == "GOOD"
+    assert out["book_status"] == "OK"
 
 
 def test_stale_depth_conflict_detected():

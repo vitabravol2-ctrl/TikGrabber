@@ -282,7 +282,7 @@ class DashboardWindow(QMainWindow):
         self.position_rows["BLOCK"].setText(f"BLOCK: {block}{(" | " + snap.block_detail) if snap.block_detail else ""}")
         self.position_rows["EDGE PACK"].setText(f"OPPORTUNITY {snap.opportunity_score:.0f} | CONT {snap.continuation_strength:.0f} | IMPULSE {snap.impulse_probability:.0f} | ACCEL {snap.acceleration_score:.0f}")
         self.position_rows["TRIGGER"].setText(f"TRAPPED {snap.trapped_liquidity_score:.0f} | VACUUM {snap.breakout_energy:.0f} | CASCADE {snap.liquidation_potential:.0f} | MODE {snap.position_mode}")
-        self.position_rows["EXPECTED MOVE"].setText(f"REAL MOVE: {snap.expected_move_ticks_real:.1f} ticks | REAL PROFIT: +${snap.expected_move_usdt_real:.2f}")
+        self.position_rows["EXPECTED MOVE"].setText(f"REAL MOVE: {snap.expected_move_ticks_real:.1f} ticks / ${snap.expected_move_usdt_real:.2f} | REQ MOVE: ${snap.required_move_usdt:.2f} | GAP: ${snap.expected_move_usdt_real - snap.required_move_usdt:+.2f}")
         self.position_rows["BLOCK REASON"].setText(f"BLOCK REASON: {block}")
 
         self.position_rows["SIDE"].setText(f"SIDE: {sim.active_trade_side if active else '-'}")
