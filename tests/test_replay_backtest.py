@@ -27,7 +27,7 @@ def test_replay_feeds_pipeline() -> None:
 
 def test_risk_gate_blocks_entry_before_simulator() -> None:
     risk = FuturesRiskControls(min_signal_strength=90.0)
-    snap = MarketSnapshot(price=100.0, spread=1.0, data_quality="Good", ticks_per_second=5.0, trigger_strength=70.0)
+    snap = MarketSnapshot(price=100.0, spread=1.0, data_quality="Good", can_trade_data=True, ticks_per_second=5.0, trigger_strength=70.0)
     ok, reason = risk.evaluate_entry(snap, FuturesPositionModel(), 1.0, cooldown_active=False)
     assert not ok and reason == "WEAK_SIGNAL"
 

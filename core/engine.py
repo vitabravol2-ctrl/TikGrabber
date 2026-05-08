@@ -101,6 +101,7 @@ class GameTheoryEngine:
         snapshot.depth_status = dq["depth_status"]
         snapshot.book_age_ms = dq["book_age_ms"]
         snapshot.depth_age_ms = dq["depth_age_ms"]
+        snapshot.can_trade_data = dq["can_trade_data"]
         snapshot.ws_status = "Live"
         snapshot.timestamp = now
         return snapshot

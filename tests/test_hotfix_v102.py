@@ -23,6 +23,7 @@ def _snap(price: float = 100.0, edge: float = 25.0) -> MarketSnapshot:
         ticks_per_second=5.0,
         data_quality="Good",
         data_quality_reason="GOOD",
+        can_trade_data=True,
         trigger_strength=90.0,
     )
 
