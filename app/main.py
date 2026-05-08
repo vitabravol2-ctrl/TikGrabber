@@ -31,7 +31,8 @@ class AppController:
             handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
             self.log.addHandler(handler)
         self.log.setLevel(logging.INFO)
-        self._last_flow = ""
+        self._last_market_flow = ""
+        self._last_trade_flow = ""
 
     def on_status(self, status: str) -> None:
         self.snapshot.ws_status = status
@@ -51,10 +52,11 @@ class AppController:
         self.snapshot.block_reason = ", ".join(blockers) if blockers else "NONE"
         self.snapshot.trigger_strength = decision.trigger_strength
 
-        self._flow_log(signal.value, decision)
-
-        signal_id = self.validator.register_signal(self.snapshot, signal)
+        signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
         sim_state = self.sim.step(self.snapshot, signal, signal_id)
+        if sim_state.accepted_signal_id is not None:
+            self.validator.register_accepted_signal(self.snapshot, signal, sim_state.accepted_signal_id)
+        self._flow_log(signal.value, decision)
         analytics = self.validator.analytics()
         sim_state.analytics.best_signal_type = analytics["best_signal_type"]
         sim_state.analytics.worst_signal_type = analytics["worst_signal_type"]
@@ -69,11 +71,22 @@ class AppController:
         state = self.snapshot.market_intent
         edge = self.snapshot.edge_score
         block = self.snapshot.block_reason
-        entry = self.sim.state.virtual_position
-        flow = f"[STATE] {state} [EDGE] {edge:+.1f} [BLOCK] {block} [SIGNAL] {signal} [ENTRY] {entry}"
-        if flow != self._last_flow:
-            self.log.info(flow)
-            self._last_flow = flow
+        bucket = round(edge / 10)
+        market_flow = f"[MARKET] STATE {state} | EDGE {edge:+.1f}({bucket:+d}) | BLOCK {block} | SIGNAL {signal} | STRENGTH {decision.trigger_strength:.1f}"
+        if market_flow != self._last_market_flow:
+            self.log.info(market_flow)
+            self._last_market_flow = market_flow
+
+        sim = self.sim.state
+        entry = f"{sim.entry:.2f}" if sim.virtual_position != "Flat" else "-"
+        exit_price = f"{sim.last_exit_price:.2f}" if sim.last_exit_price > 0 else "-"
+        trade_flow = (
+            f"[TRADE] POS {sim.virtual_position} | EVENT {sim.last_event} | E {entry} | "
+            f"X {exit_price} | NET {sim.last_net_pnl:+.2f} | FEES {sim.fees_paid:.2f} | HOLD {sim.hold_seconds:.1f}s"
+        )
+        if trade_flow != self._last_trade_flow:
+            self.log.info(trade_flow)
+            self._last_trade_flow = trade_flow
 
     def run(self) -> None:
         self.window.show()
