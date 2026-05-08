@@ -49,6 +49,9 @@ class GameTheoryEngine:
         self._state_engine = MarketStateEngine()
         self._gt = GameTheoryModule()
         self._dq = DataQualityGate(self.BOOK_STALE_MS, self.DEPTH_STALE_MS)
+        self._edge_ema = 0.0
+        self._trap_cooldown_until = 0.0
+        self._prev_imbalance = 0.0
 
     def update(self, snapshot: MarketSnapshot, event: dict) -> MarketSnapshot:
         now = time()
@@ -84,13 +87,50 @@ class GameTheoryEngine:
         reclaim_score = min(1.0, reclaim_flow * 0.5 + reclaim_stability * 0.3 + (1.0 - min(1.0, m.volume_burst)) * 0.2)
         snapshot.reclaim = reclaim_score if state in {MarketState.RECLAIM, MarketState.BUY_PRESSURE, MarketState.SELL_PRESSURE} else reclaim_score * 0.6
 
-        trap_score = min(1.0, m.volume_burst * 0.4 + min(1.0, abs(m.order_book_imbalance) * 2.0) * 0.35 + m.liquidity_shift * 0.25)
-        snapshot.trap = max(trap_score, sig.trap_probability / 100.0)
+        aggressive_failed = m.volume_burst > 0.55 and impulse > 0.9 and abs(price_delta) < m.spread * 0.5
+        reclaim_failed = snapshot.reclaim < 0.45
+        liquidity_pull = m.liquidity_shift > 0.35
+        imbalance_flipped = (self._prev_imbalance * m.order_book_imbalance) < 0
+        velocity_collapsed = abs(price_delta) < max(0.1, m.spread * 0.25)
+        trap_score = min(
+            1.0,
+            (0.28 if aggressive_failed else 0.0)
+            + (0.2 if reclaim_failed else 0.0)
+            + (0.2 if liquidity_pull else 0.0)
+            + (0.17 if imbalance_flipped else 0.0)
+            + (0.15 if velocity_collapsed else 0.0),
+        )
+        trap_allowed = now >= self._trap_cooldown_until and trap_score > 0.72
+        snapshot.trap = max(trap_score, sig.trap_probability / 100.0) if trap_allowed else min(0.34, trap_score)
+        if trap_allowed:
+            self._trap_cooldown_until = now + 2.5
+        self._prev_imbalance = m.order_book_imbalance
         snapshot.panic = min(1.0, m.spread_widening * 0.5 + min(1.0, m.local_volatility / 2.2) * 0.5)
         snapshot.long_probability = sig.long_pressure
         snapshot.short_probability = sig.short_pressure
         snapshot.market_intent = state.value
         snapshot.edge_score = sig.edge_score
+        self._edge_ema = (sig.edge_score * 0.2) + (self._edge_ema * 0.8)
+        snapshot.smoothed_edge_score = self._edge_ema
+        snapshot.market_regime = state.value
+        edge_delta = abs(snapshot.edge_score - snapshot.smoothed_edge_score)
+        snapshot.edge_stability = "STABLE" if edge_delta < 10.0 else "UNSTABLE"
+        noise_score = (min(1.0, edge_delta / 35.0) * 0.5) + (min(1.0, m.local_volatility / 2.0) * 0.3) + (m.volume_burst * 0.2)
+        snapshot.noise_level = "LOW" if noise_score < 0.35 else ("MID" if noise_score < 0.62 else "HIGH")
+        quality_points = 0
+        quality_points += 2 if snapshot.edge_stability == "STABLE" else 0
+        quality_points += 1 if snapshot.noise_level == "LOW" else 0
+        quality_points += 1 if m.spread < 2.5 else 0
+        quality_points += 1 if snapshot.can_trade_data else 0
+        quality_points += 1 if abs(snapshot.smoothed_edge_score) > 18 else 0
+        quality_points -= 2 if snapshot.trap > 0.55 else 0
+        snapshot.signal_quality = "A" if quality_points >= 5 else ("B" if quality_points >= 3 else ("C" if quality_points >= 1 else "D"))
+        snapshot.no_trade_zone = (
+            state.value in {"DEAD_MARKET", "COMPRESSION"}
+            or snapshot.edge_stability == "UNSTABLE"
+            or snapshot.noise_level == "HIGH"
+            or snapshot.signal_quality in {"C", "D"}
+        )
         snapshot.trap_probability = sig.trap_probability
         snapshot.volume_24h = m.mini_volume_24h
         snapshot.latency_ms = max(0.0, time() * 1000.0 - float(event.get("event_time", 0)))

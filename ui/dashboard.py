@@ -23,7 +23,7 @@ from telemetry.event_guard import EventGuard
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v1.0.4 — Futures Command Center")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v1.0.5 — Futures Command Center")
         self.resize(1920, 1080)
         self.setStyleSheet(
             "QWidget{background:#0a0f18;color:#d5def5;font-family:Consolas,Inter,Segoe UI;}"
@@ -79,7 +79,7 @@ class DashboardWindow(QMainWindow):
         self.price_label.setStyleSheet("font-size:34px;font-weight:800;")
         row.addWidget(self.price_label)
         self.header_labels = {}
-        for key in ["SPREAD", "VELOCITY", "VOLUME", "EDGE", "NET EDGE", "TPS", "WS"]:
+        for key in ["SPREAD", "VELOCITY", "VOLUME", "EDGE", "SMOOTH EDGE", "NET EDGE", "TPS", "WS"]:
             v = QLabel(f"{key}: -")
             v.setStyleSheet("font-size:14px;font-weight:600;padding:3px 6px;background:#111d31;border:1px solid #223656;border-radius:6px;")
             self.header_labels[key] = v
@@ -148,7 +148,7 @@ class DashboardWindow(QMainWindow):
     def _build_engine_status(self) -> QFrame:
         panel, lay = self._panel("ENGINE STATUS")
         self.engine_rows = {}
-        for key in ["WS", "BOOK", "DEPTH", "LATENCY", "DATA QUALITY", "REPLAY MODE", "EVENTS", "TRADES", "WINRATE", "NET PNL"]:
+        for key in ["WS", "BOOK", "DEPTH", "LATENCY", "DATA QUALITY", "REGIME", "QUALITY", "EDGE STABILITY", "NOISE LEVEL", "REPLAY MODE", "EVENTS", "TRADES", "WINRATE", "NET PNL"]:
             lbl = QLabel(f"{key}: -")
             self.engine_rows[key] = lbl
             lay.addWidget(lbl)
@@ -167,6 +167,7 @@ class DashboardWindow(QMainWindow):
         self.header_labels["VELOCITY"].setText(f"VELOCITY: {snap.velocity:+.2f}/s")
         self.header_labels["VOLUME"].setText(f"VOLUME: {snap.volume_24h:,.0f}")
         self.header_labels["EDGE"].setText(f"EDGE: {snap.edge_score:+.1f}")
+        self.header_labels["SMOOTH EDGE"].setText(f"SMOOTH EDGE: {snap.smoothed_edge_score:+.1f}")
         self.header_labels["NET EDGE"].setText(f"NET EDGE: {snap.net_edge_score:+.1f}")
         self.header_labels["TPS"].setText(f"TPS: {snap.ticks_per_second:.1f}")
         self.header_labels["WS"].setText(f"WS: {snap.ws_status}")
@@ -205,7 +206,7 @@ class DashboardWindow(QMainWindow):
         active = sim.virtual_position != "Flat"
         self.position_status.setText(f"STATUS: {'ACTIVE ' + sim.active_trade_side if active else 'WAITING SETUP'}")
         self.position_rows["CURRENT INTENT"].setText(f"CURRENT INTENT: {snap.market_intent}")
-        self.position_rows["CURRENT EDGE"].setText(f"CURRENT EDGE: {snap.edge_score:+.1f}")
+        self.position_rows["CURRENT EDGE"].setText(f"CURRENT EDGE: {snap.edge_score:+.1f} / {snap.smoothed_edge_score:+.1f}")
         self.position_rows["TRIGGER STRENGTH"].setText(f"TRIGGER STRENGTH: {snap.trigger_strength:.1f}")
         best_dir = "LONG" if snap.long_probability >= snap.short_probability else "SHORT"
         self.position_rows["BEST DIRECTION"].setText(f"BEST DIRECTION: {best_dir}")
@@ -226,9 +227,9 @@ class DashboardWindow(QMainWindow):
         self.position_rows["SLIPPAGE"].setText(f"SLIPPAGE: {sim.avg_slippage:.3f}")
         self.position_rows["FEES"].setText(f"FEES: {sim.fees_paid:.2f}")
 
-        market_flow_line = f"{snap.market_intent} | EDGE {snap.edge_score:+.0f} | {'TRAP DETECTED' if snap.trap > 0.35 else 'NO TRAP'}"
+        market_flow_line = f"REGIME -> {snap.market_regime} | EDGE STABILIZED {snap.smoothed_edge_score:+.0f} | QUALITY {snap.signal_quality} | {snap.edge_stability} | NOISE {snap.noise_level}"
         trade_flow_line = f"{sim.last_event} | {sim.virtual_position} | NET {sim.last_net_pnl:+.2f} | HOLD {hold:.1f}s"
-        if self._event_guard.should_emit("market_flow", market_flow_line):
+        if self._event_guard.should_emit("market_flow", f"{snap.market_regime}:{snap.signal_quality}:{snap.edge_stability}:{snap.noise_level}"):
             self.flow_terminal.append(market_flow_line)
         if self._event_guard.should_emit("trade_flow", f"{sim.last_event}:{sim.virtual_position}"):
             self.trade_flow_terminal.append(trade_flow_line)
@@ -240,6 +241,10 @@ class DashboardWindow(QMainWindow):
         self.engine_rows["DEPTH"].setText(f"DEPTH: {snap.depth_status} ({depth_age_text})")
         self.engine_rows["LATENCY"].setText(f"LATENCY: {snap.latency_ms:.0f} ms")
         self.engine_rows["DATA QUALITY"].setText(f"DATA QUALITY: {snap.data_quality} / {snap.data_quality_reason}")
+        self.engine_rows["REGIME"].setText(f"REGIME: {snap.market_regime}")
+        self.engine_rows["QUALITY"].setText(f"QUALITY: {snap.signal_quality}")
+        self.engine_rows["EDGE STABILITY"].setText(f"EDGE STABILITY: {snap.edge_stability}")
+        self.engine_rows["NOISE LEVEL"].setText(f"NOISE LEVEL: {snap.noise_level}")
         self.engine_rows["REPLAY MODE"].setText(f"REPLAY MODE: {sim.replay.mode}")
         self.engine_rows["EVENTS"].setText(f"EVENTS: {sim.replay.events_processed}")
         self.engine_rows["TRADES"].setText(f"TRADES: {sim.trades}")
