@@ -23,7 +23,8 @@ class DataQualityGate:
         bid_vol = float(event.get("bid_volume_total", 0.0))
         ask_vol = float(event.get("ask_volume_total", 0.0))
         book_ready = bool(event.get("book_ready", bid > 0 and ask > 0))
-        depth_ready = bool(event.get("depth_ready", bid_vol > 0 and ask_vol > 0))
+        depth_ready_flag = event.get("depth_ready")
+        depth_ready = bool(depth_ready_flag) if depth_ready_flag is not None else (depth_age_ms < self.depth_stale_ms or (bid_vol > 0 and ask_vol > 0))
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if not depth_ready:
