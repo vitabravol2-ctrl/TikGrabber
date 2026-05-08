@@ -7,7 +7,7 @@ from signal_engine import TradeSignal
 
 
 class PaperSimulator:
-    def __init__(self, tick_size: float = 0.10, tp_ticks: int = 2, sl_ticks: int = 2, timeout_seconds: float = 20.0) -> None:
+    def __init__(self, tick_size: float = 0.10, tp_ticks: int = 2, sl_ticks: int = 2, timeout_seconds: float = 20.0, on_trade_closed=None) -> None:
         self.state = SimulationState()
         self.tick_size = tick_size
         self.tp_ticks = tp_ticks
@@ -17,26 +17,29 @@ class PaperSimulator:
         self._entry_side = ""
         self._pnl_sum = 0.0
         self._hold_sum = 0.0
+        self._current_signal_id: int | None = None
+        self._on_trade_closed = on_trade_closed
 
-    def step(self, snap: MarketSnapshot, signal: TradeSignal) -> SimulationState:
+    def step(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None = None) -> SimulationState:
         now = time()
         self.state.last_signal = signal.value
         self.state.edge_history.append(snap.edge_score)
         self.state.edge_history = self.state.edge_history[-40:]
 
         if self.state.virtual_position == "Flat" and signal != TradeSignal.NO_SIGNAL:
-            self._open_trade(snap.price, signal, now)
+            self._open_trade(snap.price, signal, now, signal_id)
         elif self.state.virtual_position != "Flat":
             self._update_open_trade(snap.price, now)
         return self.state
 
-    def _open_trade(self, price: float, signal: TradeSignal, now: float) -> None:
+    def _open_trade(self, price: float, signal: TradeSignal, now: float, signal_id: int | None) -> None:
         is_long = signal == TradeSignal.LONG_SIGNAL
         self.state.virtual_position = "Long" if is_long else "Short"
         self.state.entry = price
         self._entry_ts = now
         self._entry_side = self.state.virtual_position
         self.state.trades += 1
+        self._current_signal_id = signal_id
         if is_long:
             self.state.long_trades += 1
         else:
@@ -78,3 +81,6 @@ class PaperSimulator:
         self.state.entry = 0.0
         self.state.pnl_ticks = 0.0
         self.state.hold_seconds = 0.0
+        if self._on_trade_closed:
+            self._on_trade_closed(self._current_signal_id, reason, pnl_ticks)
+        self._current_signal_id = None

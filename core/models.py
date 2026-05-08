@@ -30,6 +30,17 @@ class MarketSnapshot:
 
 
 @dataclass
+class SignalAnalyticsState:
+    best_signal_type: str = "N/A"
+    worst_signal_type: str = "N/A"
+    current_signal_quality: str = "D"
+    signal_confidence: float = 0.0
+    best_market_condition: str = "N/A"
+    best_combo: str = "N/A"
+    worst_combo: str = "N/A"
+
+
+@dataclass
 class SimulationState:
     mode: str = "LIVE PAPER MODE"
     last_signal: str = "NONE"
@@ -52,3 +63,4 @@ class SimulationState:
     long_winrate: float = 0.0
     short_winrate: float = 0.0
     edge_history: list[float] = field(default_factory=list)
+    analytics: SignalAnalyticsState = field(default_factory=SignalAnalyticsState)

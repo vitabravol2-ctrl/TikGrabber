@@ -40,7 +40,7 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.3")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v0.4")
         self.resize(1240, 820)
         self.setStyleSheet("QWidget{background:#0f1117;color:#e6e6e6;font-family:Inter,Segoe UI;} QFrame{border:1px solid #202535;border-radius:10px;background:#131722;} QProgressBar{border:none;background:#1a1f2c;height:22px;border-radius:10px;} QProgressBar::chunk{border-radius:10px;background:#1ecb70;}")
 
@@ -72,8 +72,12 @@ class DashboardWindow(QMainWindow):
             sim_widgets += [QLabel(key.replace("_", " ").title()), self.sim_labels[key]]
         grid.addWidget(self._panel("SIMULATION STATUS", sim_widgets), 2, 0, 1, 2)
 
+        self.analytics_labels = {k: QLabel("-") for k in ["best_signal", "worst_signal", "quality", "confidence", "best_market", "best_combo", "worst_combo"]}
+        self.analytics_labels["quality"].setStyleSheet("font-size:34px;font-weight:700;color:#f5c542;")
+        grid.addWidget(self._panel("SIGNAL ANALYTICS", [QLabel("BEST SIGNAL TYPE"), self.analytics_labels["best_signal"], QLabel("WORST SIGNAL TYPE"), self.analytics_labels["worst_signal"], QLabel("CURRENT SIGNAL QUALITY"), self.analytics_labels["quality"], QLabel("SIGNAL CONFIDENCE"), self.analytics_labels["confidence"], QLabel("BEST MARKET CONDITION"), self.analytics_labels["best_market"], QLabel("BEST CONDITIONS HEATMAP"), self.analytics_labels["best_combo"], QLabel("WORST CONDITIONS HEATMAP"), self.analytics_labels["worst_combo"]]), 3, 0)
+
         self.status_labels = {k: QLabel("-") for k in ["ws_status", "latency", "tps", "quality"]}
-        grid.addWidget(self._panel("DATA STATUS", [QLabel("WS STATUS"), self.status_labels["ws_status"], QLabel("LATENCY"), self.status_labels["latency"], QLabel("TICKS/SEC"), self.status_labels["tps"], QLabel("DATA QUALITY"), self.status_labels["quality"]]), 3, 0, 1, 2)
+        grid.addWidget(self._panel("DATA STATUS", [QLabel("WS STATUS"), self.status_labels["ws_status"], QLabel("LATENCY"), self.status_labels["latency"], QLabel("TICKS/SEC"), self.status_labels["tps"], QLabel("DATA QUALITY"), self.status_labels["quality"]]), 3, 1)
         self.setCentralWidget(root)
 
     def _panel(self, title: str, widgets: list[QWidget]) -> QFrame:
@@ -111,6 +115,14 @@ class DashboardWindow(QMainWindow):
 
         edge_strength = min(100, int(abs(sum(sim.edge_history[-10:]) / max(1, len(sim.edge_history[-10:]))) ))
         self.edge_history_bar.setValue(edge_strength)
+
+        self.analytics_labels["best_signal"].setText(sim.analytics.best_signal_type)
+        self.analytics_labels["worst_signal"].setText(sim.analytics.worst_signal_type)
+        self.analytics_labels["quality"].setText(sim.analytics.current_signal_quality)
+        self.analytics_labels["confidence"].setText(f"{sim.analytics.signal_confidence:.1f}%")
+        self.analytics_labels["best_market"].setText(sim.analytics.best_market_condition)
+        self.analytics_labels["best_combo"].setText(sim.analytics.best_combo)
+        self.analytics_labels["worst_combo"].setText(sim.analytics.worst_combo)
 
         self.status_labels["ws_status"].setText(snap.ws_status)
         self.status_labels["latency"].setText(f"{snap.latency_ms:.0f} ms")
