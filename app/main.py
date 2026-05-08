@@ -43,6 +43,10 @@ class AppController:
         self.risk = FuturesRiskControls()
         self.position = FuturesPositionModel()
         self.blocked_reasons = Counter()
+        self._setup_arm_direction = "NONE"
+        self._setup_arm_regime_family = "NONE"
+        self._setup_arm_ticks = 0
+        self._setup_arm_required = 3
 
     def on_status(self, status: str) -> None:
         self.snapshot.ws_status = status
@@ -75,6 +79,13 @@ class AppController:
         self.snapshot.best_direction = "LONG" if self.snapshot.long_probability >= self.snapshot.short_probability else "SHORT"
 
         signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
+        candidate_direction = signal.value if signal.value != "NONE" else "NONE"
+        self.snapshot.candidate_direction = candidate_direction
+        self.snapshot.candidate_quality = self.snapshot.signal_quality
+        self.snapshot.active_order = self.sim.state.active_order
+        self.snapshot.active_position = self.sim.state.virtual_position != "Flat"
+        self.snapshot.cooldown = self.sim.state.cooldown_active
+        self.snapshot.data_can_trade = self.snapshot.can_trade_data
         allowed = True
         reason = "PASS"
         if signal.value != "NONE":
@@ -82,8 +93,31 @@ class AppController:
             if not allowed:
                 self.snapshot.block_reason = reason
                 self.blocked_reasons[reason] += 1
-        accepted_signal = signal if allowed else type(signal).NO_SIGNAL
+        self.snapshot.risk_allowed = allowed
+        armed_signal = signal if self._arm_setup(signal.value, allowed) else type(signal).NO_SIGNAL
+        self.snapshot.setup_armed = armed_signal.value != "NONE"
+        self.snapshot.setup_armed_ticks = self._setup_arm_ticks
+        accepted_signal = armed_signal if allowed else type(signal).NO_SIGNAL
+        self.snapshot.sim_can_open = accepted_signal.value != "NONE" and self.sim.state.virtual_position == "Flat"
+        self.snapshot.router_can_place = self.snapshot.sim_can_open and not self.sim.state.active_order
         sim_state = self.sim.step(self.snapshot, accepted_signal, signal_id if allowed else None)
+        opened_events = {"LONG_OPENED", "SHORT_OPENED", "PARTIAL FILL LONG_OPENED", "PARTIAL FILL SHORT_OPENED"}
+        if sim_state.last_event in opened_events:
+            self.snapshot.final_entry_decision = "ORDER SENT"
+        else:
+            if self.snapshot.block_reason == "NONE" and self.snapshot.candidate_quality == "A":
+                if not self.snapshot.risk_allowed:
+                    self.snapshot.block_reason = reason
+                elif self.sim.state.cooldown_active:
+                    self.snapshot.block_reason = "COOLDOWN"
+                elif self.snapshot.active_position:
+                    self.snapshot.block_reason = "IN_POSITION"
+                elif self._setup_arm_ticks < self._setup_arm_required:
+                    self.snapshot.block_reason = "SETUP_ARMING"
+                else:
+                    self.snapshot.block_reason = "ORDER_REJECTED"
+            self.snapshot.final_entry_decision = f"ENTRY BLOCKED: {self.snapshot.block_reason}"
+        self.snapshot.entry_reason = sim_state.last_event
         if allowed and sim_state.accepted_signal_id is not None:
             self.validator.register_accepted_signal(self.snapshot, signal, sim_state.accepted_signal_id)
 
@@ -107,6 +141,31 @@ class AppController:
         sim_state.replay.best_state = analytics["best_market_condition"]
         sim_state.replay.worst_state = analytics["worst_combo"]
         self.window.render(self.snapshot, sim_state)
+
+    def _arm_setup(self, signal_value: str, risk_allowed: bool) -> bool:
+        regime_family = self.snapshot.market_regime
+        setup_ok = all(
+            [
+                signal_value in {"LONG", "SHORT"},
+                self.snapshot.signal_quality == "A",
+                self.snapshot.noise_level == "LOW",
+                self.snapshot.edge_stability == "STABLE",
+                self.snapshot.can_trade_data,
+                risk_allowed,
+            ]
+        )
+        if not setup_ok:
+            self._setup_arm_direction = "NONE"
+            self._setup_arm_regime_family = "NONE"
+            self._setup_arm_ticks = 0
+            return False
+        if signal_value == self._setup_arm_direction and regime_family == self._setup_arm_regime_family:
+            self._setup_arm_ticks += 1
+        else:
+            self._setup_arm_direction = signal_value
+            self._setup_arm_regime_family = regime_family
+            self._setup_arm_ticks = 1
+        return self._setup_arm_ticks >= self._setup_arm_required
 
     def _flow_log(self, signal: str, decision) -> None:
         state = self.snapshot.market_intent

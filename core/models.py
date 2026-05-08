@@ -52,6 +52,19 @@ class MarketSnapshot:
     best_direction: str = "FLAT"
     ws_streams_seen: list[str] = field(default_factory=list)
     price_source: str = "BOOKTICKER"
+    candidate_direction: str = "NONE"
+    candidate_quality: str = "D"
+    risk_allowed: bool = False
+    sim_can_open: bool = False
+    router_can_place: bool = False
+    active_order: bool = False
+    active_position: bool = False
+    cooldown: bool = False
+    data_can_trade: bool = False
+    final_entry_decision: str = "ENTRY BLOCKED"
+    entry_reason: str = "-"
+    setup_armed: bool = False
+    setup_armed_ticks: int = 0
 
 
 @dataclass
