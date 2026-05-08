@@ -49,6 +49,18 @@ class MarketSnapshot:
     edge_stability: str = "UNSTABLE"
     noise_level: str = "HIGH"
     no_trade_zone: bool = True
+    best_direction: str = "FLAT"
+    ws_streams_seen: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PaperSimConfig:
+    tp_ticks: int = 2
+    sl_ticks: int = 2
+    timeout_seconds: float = 20.0
+    cooldown_seconds: float = 4.0
+    timeout_extension_seconds: float = 10.0
+    timeout_neutral_ticks: float = 1.0
 
 
 @dataclass

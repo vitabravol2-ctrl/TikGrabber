@@ -185,7 +185,7 @@ class DashboardWindow(QMainWindow):
         self.engine_block.setStyleSheet("font-size:11px;")
         self.engine_volume = QLabel("VOL24: -")
         self.engine_volume.setStyleSheet("font-size:10px;color:#7f92b8;")
-        self.engine_metrics = QLabel("EVT 0 | TRD 0 | WR 0% | PNL +0.00")
+        self.engine_metrics = QLabel("EVT 0 | OPEN 0 | CLOSED 0 | WR 0%")
         self.engine_metrics.setStyleSheet("font-size:12px;font-weight:700;color:#b7cff7;")
         lay.addWidget(self.engine_block)
         lay.addWidget(self.engine_volume)
@@ -283,9 +283,11 @@ class DashboardWindow(QMainWindow):
         for key in active_keys:
             self.position_rows[key].setVisible(active)
 
-        market_flow_line = f"{snap.market_regime} | {snap.signal_quality} | EDGE {snap.smoothed_edge_score:+.0f} | NOISE {snap.noise_level}"
+        edge_bucket = int(round(snap.smoothed_edge_score / 10.0) * 10)
+        market_flow_line = f"REGIME -> {snap.market_regime} | QUALITY -> {snap.signal_quality} | EDGE BUCKET -> {edge_bucket:+d} | NOISE -> {snap.noise_level}"
         trade_flow_line = f"WAITING SETUP | BLOCK: {block} | LAST CANDIDATE: {best_dir} {snap.signal_quality}"
-        if self._event_guard.should_emit("market_flow", f"{snap.market_regime}:{snap.signal_quality}:{snap.edge_stability}:{block}"):
+        dedup_key = f"{snap.market_regime}:{snap.signal_quality}:{edge_bucket}:{snap.noise_level}:{block}:{sim.lifecycle_state}"
+        if self._event_guard.should_emit("market_flow", dedup_key):
             self.flow_terminal.append(market_flow_line)
         if self._event_guard.should_emit("trade_flow_waiting", f"{block}:{best_dir}:{sim.trades}") and self._last_trade_event_idx == 0:
             self.trade_flow_terminal.append(trade_flow_line)
@@ -294,13 +296,13 @@ class DashboardWindow(QMainWindow):
             self.trade_flow_terminal.append(event)
         self._last_trade_event_idx = len(sim.trade_events)
 
-        book_ok = snap.book_status == "OK"
+        book_ok = snap.book_status in {"OK", "OK_FALLBACK"}
         depth_ok = snap.depth_status == "OK"
         data_level = "green" if snap.can_trade_data else "red"
         risk_level = "green" if snap.can_trade_data and block == "NONE" else "yellow" if snap.can_trade_data else "red"
 
         self._set_status_lamp(self.engine_lamps["WS"], "green" if snap.ws_status.lower() == "live" else "yellow")
-        book_level = "green" if book_ok else ("yellow" if snap.data_quality_reason == "WARMUP_BOOK" else "red")
+        book_level = "green" if snap.book_status == "OK" else ("yellow" if snap.book_status == "OK_FALLBACK" or snap.data_quality_reason == "WARMUP_BOOK" else "red")
         self._set_status_lamp(self.engine_lamps["BOOK"], book_level)
         self._set_status_lamp(self.engine_lamps["DEPTH"], "green" if depth_ok else "red")
         self._set_status_lamp(self.engine_lamps["DATA"], data_level)
@@ -309,9 +311,10 @@ class DashboardWindow(QMainWindow):
         lifecycle_level = "green" if sim.lifecycle_state in {"ACTIVE_POSITION", "PARTIAL_ENTRY"} else ("yellow" if sim.lifecycle_state in {"SETUP_CANDIDATE", "ENTRY_PENDING", "COOLDOWN", "EXITING"} else "gray")
         self._set_status_lamp(self.engine_lamps["LIFECYCLE"], lifecycle_level)
         self.engine_block.setText(f"BLOCK: {block if block != 'NONE' else snap.data_quality_reason.upper()}")
-        self.engine_volume.setText(f"VOL24: {snap.volume_24h:,.0f} | BOOK AGE {snap.book_age_ms:.0f} ms | DEPTH AGE {snap.depth_age_ms:.0f} ms")
+        streams = ",".join(snap.ws_streams_seen) if snap.ws_streams_seen else "-"
+        self.engine_volume.setText(f"VOL24: {snap.volume_24h:,.0f} | BOOK AGE {snap.book_age_ms:.0f} ms | DEPTH AGE {snap.depth_age_ms:.0f} ms | STREAMS {streams}")
         self.engine_metrics.setText(
-            f"EVT {sim.replay.events_processed} | TRD {sim.trades} | WR {sim.winrate:.1f}% | PNL {sim.realized_pnl + sim.unrealized_pnl:+.2f}"
+            f"EVT {sim.replay.events_processed} | OPEN {sim.opened_trades} | CLOSED {sim.closed_trades} | WR {sim.winrate:.1f}% | SESSION {sim.realized_pnl + sim.unrealized_pnl:+.2f} | LAST {sim.last_net_pnl:+.2f} | AVG {sim.avg_pnl:+.2f} | NET {sim.net_ticks:+.1f}t"
         )
 
         if sim.last_event in {"ENTRY", "TP", "SL", "EXIT", "TIMEOUT"}:

@@ -24,6 +24,7 @@ class BookState:
     last_agg_trade_ts: float = 0.0
     ws_streams_seen: set[str] | None = None
     last_stream: str = ""
+    fallback_active: bool = False
 
 
 class BinanceFeedWorker(QObject):
@@ -56,7 +57,8 @@ class BinanceFeedWorker(QObject):
         payload = data.get("data", {})
         stream = data.get("stream", "")
 
-        if "bookTicker" in stream:
+        stream_lower = stream.lower()
+        if "bookticker" in stream_lower:
             bid = float(payload.get("b", 0.0) or 0.0)
             ask = float(payload.get("a", 0.0) or 0.0)
             if bid > 0 and ask > 0:
@@ -65,7 +67,7 @@ class BinanceFeedWorker(QObject):
                 self._book.bid_qty = float(payload.get("B", self._book.bid_qty) or self._book.bid_qty)
                 self._book.ask_qty = float(payload.get("A", self._book.ask_qty) or self._book.ask_qty)
                 self._book.book_ticker_ts = now_ms
-        elif "depth20" in stream:
+        elif "depth20" in stream_lower or "@depth" in stream_lower:
             bids = payload.get("bids") or payload.get("b") or []
             asks = payload.get("asks") or payload.get("a") or []
             self._book.bid_volume_total = sum(float(b[1]) for b in bids)
@@ -73,10 +75,18 @@ class BinanceFeedWorker(QObject):
             total = self._book.bid_volume_total + self._book.ask_volume_total
             self._book.imbalance = ((self._book.bid_volume_total - self._book.ask_volume_total) / total) if total else 0.0
             self._book.depth_ts = now_ms
-        elif "miniTicker" in stream:
+            if bids and asks:
+                top_bid = float(bids[0][0])
+                top_ask = float(asks[0][0])
+                if (self._book.book_ticker_ts <= 0) or (now_ms - self._book.book_ticker_ts >= 5000.0):
+                    if top_bid > 0 and top_ask > 0:
+                        self._book.bid = top_bid
+                        self._book.ask = top_ask
+                        self._book.fallback_active = True
+        elif "miniticker" in stream_lower:
             self._book.mini_volume_24h = float(payload.get("v", 0.0))
             self._book.mini_ticker_ts = now_ms
-        elif "aggTrade" in stream:
+        elif "aggtrade" in stream_lower:
             self._book.last_agg_trade_ts = now_ms
             self._book.last_stream = stream
             if self._book.ws_streams_seen is not None:
@@ -84,18 +94,24 @@ class BinanceFeedWorker(QObject):
             book_age_ms = max(0.0, now_ms - self._book.book_ticker_ts) if self._book.book_ticker_ts else None
             depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else 1e9
             mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else 1e9
+            fallback_book = self._book.fallback_active
             book_ready = self._book.bid > 0 and self._book.ask > 0
             depth_ready = self._book.bid_volume_total > 0 and self._book.ask_volume_total > 0
             mini_ready = self._book.mini_ticker_ts > 0
             if not book_ready:
                 book_status = "missing"
                 book_reason = "MISSING_BOOK_TICKER"
+            elif fallback_book:
+                book_status = "ok_fallback"
+                book_reason = "BOOK_FALLBACK_DEPTH_TOP"
+                book_age_ms = depth_age_ms
             elif (book_age_ms is not None) and book_age_ms >= 2500.0:
                 book_status = "stale"
                 book_reason = "STALE_BOOK"
             else:
                 book_status = "ok"
                 book_reason = "GOOD"
+                self._book.fallback_active = False
             if not depth_ready:
                 depth_status = "missing"
                 depth_reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < 2500.0 else "MISSING_DEPTH"
@@ -139,7 +155,7 @@ class BinanceFeedWorker(QObject):
         else:
             self._book.last_stream = stream
         if self._book.ws_streams_seen is not None:
-            stream_name = "bookTicker" if "bookTicker" in stream else "depth20" if "depth20" in stream else "miniTicker" if "miniTicker" in stream else "aggTrade" if "aggTrade" in stream else stream
+            stream_name = "bookTicker" if "bookticker" in stream_lower else "depth" if "depth" in stream_lower else "miniTicker" if "miniticker" in stream_lower else "aggTrade" if "aggtrade" in stream_lower else stream
             self._book.ws_streams_seen.add(stream_name)
 
 

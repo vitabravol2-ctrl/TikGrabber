@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from time import time
 
-from core.models import MarketSnapshot, SimulationState
+from core.models import MarketSnapshot, PaperSimConfig, SimulationState
 from execution.breakeven import BreakEvenModel
 from signal_engine import TradeSignal
 from simulation.execution_model import ExecutionModel
@@ -25,10 +25,11 @@ class PaperSimulator:
     ) -> None:
         self.state = SimulationState()
         self.tick_size = tick_size
-        self.tp_ticks = tp_ticks
-        self.sl_ticks = sl_ticks
-        self.timeout_seconds = timeout_seconds
-        self.cooldown_seconds = cooldown_seconds
+        self.config = PaperSimConfig(tp_ticks=tp_ticks, sl_ticks=sl_ticks, timeout_seconds=timeout_seconds, cooldown_seconds=cooldown_seconds)
+        self.tp_ticks = self.config.tp_ticks
+        self.sl_ticks = self.config.sl_ticks
+        self.timeout_seconds = self.config.timeout_seconds
+        self.cooldown_seconds = self.config.cooldown_seconds
         self.min_hold_seconds = min_hold_ms / 1000.0
         self.anti_spam_edge_delta = anti_spam_edge_delta
         self.execution = ExecutionModel(tick_size=tick_size)
@@ -172,7 +173,15 @@ class PaperSimulator:
         elif force_close:
             self._close_trade(snap, "SL", now)
         elif self.state.hold_seconds >= self.timeout_seconds and can_close:
-            self._close_trade(snap, "TIMEOUT", now)
+            if (self._entry_side == "Long" and snap.net_edge_score < 0) or (self._entry_side == "Short" and snap.net_edge_score > 0):
+                self._close_trade(snap, "EXIT_INVALIDATED", now)
+            elif abs(self.state.pnl_ticks) <= self.config.timeout_neutral_ticks:
+                self._close_trade(snap, "TIMEOUT_CLOSED", now)
+            elif snap.edge_stability == "STABLE" and snap.noise_level == "LOW" and snap.signal_quality == "A":
+                if self.state.hold_seconds >= (self.timeout_seconds + self.config.timeout_extension_seconds):
+                    self._close_trade(snap, "TIMEOUT_CLOSED", now)
+            else:
+                self._close_trade(snap, "TIMEOUT_CLOSED", now)
 
     def _close_trade(self, snap: MarketSnapshot, reason: str, now: float) -> None:
         if self.state.close_latched:
@@ -197,8 +206,13 @@ class PaperSimulator:
         self.state.net_pnl = net_pnl
         self.state.net_ticks = net_ticks
         self.state.last_trade_result = f"{self._entry_side} {reason} gross {gross_pnl:+.2f} net {net_pnl:+.2f} ({net_ticks:+.1f} ticks)"
-        self._emit_trade_event(f"{reason}_CLOSED")
-        self._emit_event(reason)
+        if reason in {"TP", "SL"}:
+            reason = f"{reason}_CLOSED"
+        self._emit_trade_event(reason)
+        event_name = reason.replace("_CLOSED", "")
+        if reason == "EXIT_INVALIDATED":
+            event_name = "EXIT"
+        self._emit_event(event_name)
         self.state.lifecycle_state = "EXITING"
         self.state.last_entry_price = self.state.entry
         self.state.last_exit_price = exit_fill.price

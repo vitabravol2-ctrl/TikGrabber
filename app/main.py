@@ -62,6 +62,7 @@ class AppController:
             event.setdefault("bid_volume_total", float(event.get("bid_volume_total", 0.0)))
             event.setdefault("ask_volume_total", float(event.get("ask_volume_total", 0.0)))
         self.snapshot = self.engine.update(self.snapshot, event)
+        self.snapshot.ws_streams_seen = list(event.get("ws_streams_seen", []))
         self.validator.register_event(self.snapshot)
 
         decision = self.decision_engine.evaluate(self.snapshot)
@@ -71,6 +72,7 @@ class AppController:
         blockers = decision.long_blockers if signal.value in {"LONG", "NONE"} else decision.short_blockers
         self.snapshot.block_reason = ", ".join(blockers) if blockers else "NONE"
         self.snapshot.trigger_strength = decision.trigger_strength
+        self.snapshot.best_direction = "LONG" if self.snapshot.long_probability >= self.snapshot.short_probability else "SHORT"
 
         signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
         allowed = True
@@ -110,8 +112,8 @@ class AppController:
         state = self.snapshot.market_intent
         edge = self.snapshot.edge_score
         block = self.snapshot.block_reason
-        bucket = round(edge / 10)
-        market_flow = f"[MARKET] STATE {state} | EDGE {edge:+.1f}({bucket:+d}) | BLOCK {block} | SIGNAL {signal} | STRENGTH {decision.trigger_strength:.1f}"
+        bucket = round(edge / 10) * 10
+        market_flow = f"REGIME -> {state} | QUALITY -> {self.snapshot.signal_quality} | EDGE BUCKET -> {bucket:+d} | NOISE -> {self.snapshot.noise_level} | BLOCK {block}"
         if market_flow != self._last_market_flow:
             self.log.info(market_flow)
             self._last_market_flow = market_flow
