@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from time import time
-import uuid
 
 from core.models import MarketSnapshot, PaperScalpingConfig, SimOrder, SimulationState
 from signal_engine import TradeSignal
+from simulation.execution_model import ExecutionModel
+
+
 
 
 class SimulatedOrderRouter:
@@ -12,17 +14,10 @@ class SimulatedOrderRouter:
         self.tick_size = tick_size
         self.max_order_age_seconds = max_order_age_seconds
         self.queue_delay_ms = queue_delay_ms
-        self.partial_fill_chance = partial_fill_chance
-        self.missed_fill_chance = missed_fill_chance
         self.active_order: SimOrder | None = None
 
     def new_limit(self, side: str, position_side: str, price: float, qty: float) -> SimOrder:
-        o = SimOrder(order_id=str(uuid.uuid4())[:8], side=side, position_side=position_side, order_type="LIMIT", price=price, qty=qty, status="NEW")
-        self.active_order = o
-        return o
-
-    def new_market_sim(self, side: str, position_side: str, price: float, qty: float) -> SimOrder:
-        o = SimOrder(order_id=str(uuid.uuid4())[:8], side=side, position_side=position_side, order_type="MARKET_SIM", price=price, qty=qty, status="NEW")
+        o = SimOrder(order_id="sim", side=side, position_side=position_side, order_type="LIMIT", price=price, qty=qty, status="NEW")
         self.active_order = o
         return o
 
@@ -31,21 +26,14 @@ class SimulatedOrderRouter:
         if order.status == "NEW" and age_ms >= self.queue_delay_ms:
             order.status = "ACKED"
         elif order.status in {"ACKED", "PARTIALLY_FILLED"}:
-            cross = (order.side == "BUY" and order.price >= best_ask) or (order.side == "SELL" and order.price <= best_bid) or order.order_type == "MARKET_SIM"
+            cross = (order.side == "BUY" and order.price >= best_ask) or (order.side == "SELL" and order.price <= best_bid)
             if cross:
                 rem = order.qty - order.filled_qty
                 fill_qty = min(rem, order.qty * (0.5 if order.filled_qty == 0 else 1.0))
-                fill_price = (best_ask if order.side == "BUY" else best_bid) + (slippage_ticks * self.tick_size if order.side == "BUY" else -slippage_ticks * self.tick_size)
-                new_total = order.filled_qty + fill_qty
-                order.avg_fill_price = ((order.avg_fill_price * order.filled_qty) + fill_price * fill_qty) / max(1e-9, new_total)
-                order.filled_qty = new_total
+                order.filled_qty += fill_qty
+                order.avg_fill_price = best_ask if order.side == "BUY" else best_bid
                 order.status = "FILLED" if abs(order.qty - order.filled_qty) < 1e-9 else "PARTIALLY_FILLED"
-            elif age_ms > self.max_order_age_seconds * 1000.0:
-                order.status = "EXPIRED"
-                order.reason = "timeout"
-        order.updated_ts = now
         return order
-
 
 class PaperSimulator:
     PROFILES = {
@@ -57,10 +45,11 @@ class PaperSimulator:
     def __init__(self, tick_size: float = 0.10, tp_ticks: int = 2, sl_ticks: int = 2, timeout_seconds: float = 20.0, cooldown_seconds: float = 4.0, min_hold_ms: int = 700, anti_spam_edge_delta: float = 1.0, on_trade_closed=None, default_notional_usdt: float = 100.0, leverage: float = 1.0) -> None:
         self.state = SimulationState()
         self.tick_size = tick_size
+        self.default_notional_usdt = default_notional_usdt
         self.scalp = PaperScalpingConfig(order_notional_usdt=default_notional_usdt, budget_usdt=default_notional_usdt, leverage=leverage, tp_ticks=float(tp_ticks), sl_ticks=float(sl_ticks), timeout_seconds=timeout_seconds, cooldown_seconds=cooldown_seconds)
         self.apply_profile(self.scalp.profile)
         self.min_hold_seconds = min_hold_ms / 1000.0
-        self.router = SimulatedOrderRouter(tick_size=tick_size, max_order_age_seconds=self.scalp.max_order_age_seconds)
+        self.execution = ExecutionModel(tick_size=tick_size)
         self._entry_ts = 0.0
         self._entry_side = ""
         self._entry_qty = 0.0
@@ -89,7 +78,9 @@ class PaperSimulator:
             return False, "BAD_NOTIONAL"
         if self.scalp.leverage > self.scalp.max_allowed_leverage:
             return False, "BAD_LEVERAGE"
-        if snap.spread > self.scalp.max_spread_ticks * self.tick_size:
+        if snap.spread <= 0:
+            return False, "NO_SPREAD"
+        if snap.spread > max(self.scalp.max_spread_ticks, 2.0):
             return False, "SPREAD_TOO_WIDE"
         return True, "PASS"
 
@@ -102,64 +93,61 @@ class PaperSimulator:
         if signal_id is not None:
             self._seen_signal_ids.add(signal_id)
 
-        if self.state.virtual_position == "Flat" and not self.state.active_order and signal != TradeSignal.NO_SIGNAL:
-            self._new_entry_order(snap, signal)
-        if self.state.active_order and self.router.active_order is not None:
-            self._process_order(self.router.active_order, snap, now)
+        if self.state.virtual_position == "Flat" and signal != TradeSignal.NO_SIGNAL:
+            self._open_position(snap, signal, now)
         elif self.state.virtual_position != "Flat":
             self._update_position(snap, now)
         self.state.signals_per_hour = self.state.signals_accepted / max(1e-6, (now - self._started_at) / 3600.0)
         return self.state
 
-    def _new_entry_order(self, snap: MarketSnapshot, signal: TradeSignal) -> None:
+    def _open_position(self, snap: MarketSnapshot, signal: TradeSignal, now: float) -> None:
         self.state.signals_candidates += 1
-        ok, reason = self._can_take_signal(snap)
         if self.state.cooldown_active:
-            ok, reason = False, "COOLDOWN"
-        permissive = snap.signal_quality == "D" and snap.noise_level == "HIGH" and snap.edge_stability == "UNSTABLE"
-        if not permissive:
-            if snap.signal_quality not in ({"A", "B", "C"} if self.scalp.allow_quality_c else ({"A", "B"} if self.scalp.allow_quality_b else {"A"})):
-                ok, reason = False, "QUALITY_NOT_ALLOWED"
+            ok, reason = False, "COOLDOWN_BLOCK"
+        else:
+            ok, reason = self._can_take_signal(snap)
         if not ok:
             self.state.signals_rejected += 1
+            self.state.last_event = reason
             self.state.last_close_reason = reason
             return
-        side = "BUY" if signal == TradeSignal.LONG_SIGNAL else "SELL"
-        pos_side = "LONG" if side == "BUY" else "SHORT"
-        px = snap.price
-        qty = self.scalp.order_notional_usdt / max(px, 1e-9)
-        self.router.new_limit(side=side, position_side=pos_side, price=px, qty=qty)
-        self.state.active_order = True
-        self.state.orders_new += 1
+        direction = "Long" if signal == TradeSignal.LONG_SIGNAL else "Short"
+        fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=max(self.tick_size, snap.spread), volatility=abs(snap.velocity), liquidity=max(0.1, snap.ticks_per_second / 10.0))
+        if fill is None or fill.missed:
+            self.state.last_event = "ENTRY MISSED"
+            self.state.missed_fills += 1
+            return
+        partial_prefix = ""
+        if fill.partial:
+            self.state.partial_fills += 1
+            partial_prefix = "PARTIAL FILL "
+        self.state.order_side = "BUY" if direction == "Long" else "SELL"
+        self.state.order_type = "MARKET_SIM"
+        self.state.order_price = fill.price
+        self.state.order_avg_fill = fill.price
+        self.state.order_status = "FILLED"
+        self.state.order_filled_pct = 100.0
+        self.state.active_order = False
+        self.state.orders_filled += 1
         self.state.signals_accepted += 1
         self.state.signals_count += 1
-
-    def _process_order(self, order: SimOrder, snap: MarketSnapshot, now: float) -> None:
-        best_bid = snap.price - max(0.01, snap.spread / 2.0)
-        best_ask = snap.price + max(0.01, snap.spread / 2.0)
-        order = self.router.step_fill(order, best_bid, best_ask, now)
-        if order.status == "PARTIALLY_FILLED":
-            self.state.last_event = "PARTIAL FILL"
-        if order.status == "FILLED":
-            self.state.active_order = False
-            if self.state.virtual_position == "Flat":
-                self.state.virtual_position = "Long" if order.position_side == "LONG" else "Short"
-                self.state.active_trade_side = self.state.virtual_position
-                self.state.entry = order.avg_fill_price
-                self.state.last_entry_price = self.state.entry
-                self.state.notional = self.scalp.order_notional_usdt
-                self.state.leverage = self.scalp.leverage
-                self.state.quantity = order.qty
-                self.state.margin_used = self.state.notional / max(self.state.leverage, 1e-9)
-                self._entry_qty = order.qty
-                self._entry_side = self.state.virtual_position
-                self._entry_ts = now
-                self.state.opened_trades += 1
-                self.state.trades = self.state.opened_trades
-                self.state.last_event = "LONG_OPENED" if self.state.virtual_position == "Long" else "SHORT_OPENED"
-                self.state.trade_events.append(self.state.last_event)
-            else:
-                self._close_position(order.avg_fill_price, now, "TP")
+        self.state.virtual_position = direction
+        self.state.active_trade_side = direction
+        self.state.entry = fill.price
+        self.state.last_entry_price = fill.price
+        self.state.notional = self.scalp.order_notional_usdt
+        self.state.leverage = self.scalp.leverage
+        self.state.quantity = self.scalp.order_notional_usdt / max(fill.price, 1e-9)
+        self.state.margin_used = self.state.notional / max(self.state.leverage, 1e-9)
+        self._entry_qty = self.state.quantity
+        self._entry_side = direction
+        self._entry_ts = now
+        self.state.lifecycle_state = "ACTIVE_POSITION"
+        self.state.opened_trades += 1
+        self.state.trades = self.state.opened_trades
+        opened = "LONG_OPENED" if direction == "Long" else "SHORT_OPENED"
+        self.state.last_event = f"{partial_prefix}{opened}".strip()
+        self.state.trade_events.append(opened)
 
     def _update_position(self, snap: MarketSnapshot, now: float) -> None:
         direction = 1 if self.state.virtual_position == "Long" else -1
@@ -167,27 +155,29 @@ class PaperSimulator:
         self.state.pnl_ticks = pnl_ticks
         self.state.unrealized_pnl = pnl_ticks * self.tick_size * self._entry_qty
         self.state.hold_seconds = now - self._entry_ts
-        if pnl_ticks >= self.scalp.tp_ticks:
-            self._close_position(snap.price, now, "TP")
-        elif pnl_ticks <= -self.scalp.sl_ticks:
-            self._close_position(snap.price, now, "SL")
-        elif self.state.hold_seconds >= self.scalp.timeout_seconds:
-            if snap.edge_stability == "UNSTABLE" and snap.noise_level == "HIGH" and snap.net_edge_score < 0:
-                self._close_position(snap.price, now, "EXIT_INVALIDATED")
-            elif snap.edge_stability == "STABLE" and snap.net_edge_score > 0:
+        if self.state.hold_seconds >= self.scalp.timeout_seconds:
+            if snap.edge_stability == "STABLE" and snap.net_edge_score > 0:
                 return
+            if snap.edge_stability == "UNSTABLE" and snap.noise_level == "HIGH" and snap.net_edge_score < 0:
+                self._close_position(snap, now, "EXIT_INVALIDATED")
             else:
-                self._close_position(snap.price, now, "TIMEOUT")
+                self._close_position(snap, now, "TIMEOUT")
+        elif pnl_ticks >= self.scalp.tp_ticks:
+            self._close_position(snap, now, "TP")
+        elif pnl_ticks <= -self.scalp.sl_ticks:
+            self._close_position(snap, now, "SL")
 
     def _close_trade(self, snap: MarketSnapshot, reason: str, now: float) -> None:
-        self._close_position(snap.price, now, reason)
+        self._close_position(snap, now, reason)
 
-    def _close_position(self, exit_price: float, now: float, reason: str) -> None:
+    def _close_position(self, snap: MarketSnapshot, now: float, reason: str) -> None:
+        fill = self.execution.exit_fill(direction=self._entry_side, price=snap.price, spread=max(self.tick_size, snap.spread), volatility=abs(snap.velocity), liquidity=max(0.1, snap.ticks_per_second / 10.0))
+        exit_price = fill.price if fill else snap.price
         direction = 1 if self._entry_side == "Long" else -1
         net = (exit_price - self.state.entry) * direction * self._entry_qty
         self.state.realized_pnl += net
         self.state.last_net_pnl = net
-        self.state.last_hold_seconds = now - self._entry_ts
+        self.state.last_hold_seconds = max(now - self._entry_ts, 1e-6)
         self.state.hold_seconds = 0.0
         self.state.closed_trades += 1
         self.state.last_exit_price = exit_price
@@ -202,8 +192,9 @@ class PaperSimulator:
             self._consecutive_losses += 1
         self.state.winrate = self.state.wins / max(1, self.state.closed_trades) * 100.0
         self.state.virtual_position = "Flat"
+        self.state.lifecycle_state = "FLAT"
         self.state.active_trade_side = "-"
         self.state.entry = 0.0
         self.state.unrealized_pnl = 0.0
         self.state.quantity = 0.0
-        self._last_close_ts = now
+        self._last_close_ts = time()

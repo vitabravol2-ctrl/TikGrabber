@@ -27,6 +27,9 @@ class BookState:
     fallback_active: bool = False
 
 
+UNKNOWN_AGE = -1.0
+
+
 class BinanceFeedWorker(QObject):
     market_event = Signal(dict)
     status = Signal(str)
@@ -74,7 +77,8 @@ class BinanceFeedWorker(QObject):
             self._book.ask_volume_total = sum(float(a[1]) for a in asks)
             total = self._book.bid_volume_total + self._book.ask_volume_total
             self._book.imbalance = ((self._book.bid_volume_total - self._book.ask_volume_total) / total) if total else 0.0
-            self._book.depth_ts = now_ms
+            if bids or asks:
+                self._book.depth_ts = now_ms
             if bids and asks:
                 top_bid = float(bids[0][0])
                 top_ask = float(asks[0][0])
@@ -92,8 +96,8 @@ class BinanceFeedWorker(QObject):
             if self._book.ws_streams_seen is not None:
                 self._book.ws_streams_seen.add("aggTrade")
             book_age_ms = max(0.0, now_ms - self._book.book_ticker_ts) if self._book.book_ticker_ts else None
-            depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else 1e9
-            mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else 1e9
+            depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else UNKNOWN_AGE
+            mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else UNKNOWN_AGE
             fallback_book = self._book.fallback_active
             book_ready = self._book.bid > 0 and self._book.ask > 0
             depth_ready = self._book.bid_volume_total > 0 and self._book.ask_volume_total > 0
@@ -112,9 +116,13 @@ class BinanceFeedWorker(QObject):
                 book_status = "ok"
                 book_reason = "GOOD"
                 self._book.fallback_active = False
-            if not depth_ready:
-                depth_status = "missing"
-                depth_reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < 2500.0 else "MISSING_DEPTH"
+            warmup_depth = (now_ms - self._first_event_ts_ms) < 3000.0
+            if depth_age_ms < 0:
+                depth_status = "warmup" if warmup_depth else "missing"
+                depth_reason = "WARMUP_DEPTH" if warmup_depth else "MISSING_DEPTH"
+            elif not depth_ready:
+                depth_status = "warmup" if warmup_depth else "missing"
+                depth_reason = "WARMUP_DEPTH" if warmup_depth else "MISSING_DEPTH"
             elif depth_age_ms >= 2500.0:
                 depth_status = "stale"
                 depth_reason = "STALE_DEPTH"
