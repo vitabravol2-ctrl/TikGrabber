@@ -33,6 +33,7 @@ class DashboardWindow(QMainWindow):
             "QTextEdit{background:#090f1a;border:1px solid #1b2b44;border-radius:7px;font-size:11px;}"
         )
         self._event_guard = EventGuard()
+        self._last_trade_event_idx = 0
 
         root = QWidget()
         outer = QVBoxLayout(root)
@@ -283,15 +284,15 @@ class DashboardWindow(QMainWindow):
             self.position_rows[key].setVisible(active)
 
         market_flow_line = f"{snap.market_regime} | {snap.signal_quality} | EDGE {snap.smoothed_edge_score:+.0f} | NOISE {snap.noise_level}"
-        trade_flow_line = (
-            f"WAITING SETUP | BLOCK: {block} | LAST CANDIDATE: {best_dir} {snap.signal_quality}"
-            if not active and sim.trades == 0
-            else f"{sim.last_event} | {sim.virtual_position} | NET {sim.last_net_pnl:+.2f} | HOLD {hold:.1f}s"
-        )
+        trade_flow_line = f"WAITING SETUP | BLOCK: {block} | LAST CANDIDATE: {best_dir} {snap.signal_quality}"
         if self._event_guard.should_emit("market_flow", f"{snap.market_regime}:{snap.signal_quality}:{snap.edge_stability}:{block}"):
             self.flow_terminal.append(market_flow_line)
-        if self._event_guard.should_emit("trade_flow", f"{sim.last_event}:{sim.virtual_position}:{block}:{sim.trades}"):
+        if self._event_guard.should_emit("trade_flow_waiting", f"{block}:{best_dir}:{sim.trades}") and self._last_trade_event_idx == 0:
             self.trade_flow_terminal.append(trade_flow_line)
+        new_events = sim.trade_events[self._last_trade_event_idx :]
+        for event in new_events:
+            self.trade_flow_terminal.append(event)
+        self._last_trade_event_idx = len(sim.trade_events)
 
         book_ok = snap.book_status == "OK"
         depth_ok = snap.depth_status == "OK"
@@ -299,7 +300,8 @@ class DashboardWindow(QMainWindow):
         risk_level = "green" if snap.can_trade_data and block == "NONE" else "yellow" if snap.can_trade_data else "red"
 
         self._set_status_lamp(self.engine_lamps["WS"], "green" if snap.ws_status.lower() == "live" else "yellow")
-        self._set_status_lamp(self.engine_lamps["BOOK"], "green" if book_ok else "red")
+        book_level = "green" if book_ok else ("yellow" if snap.data_quality_reason == "WARMUP_BOOK" else "red")
+        self._set_status_lamp(self.engine_lamps["BOOK"], book_level)
         self._set_status_lamp(self.engine_lamps["DEPTH"], "green" if depth_ok else "red")
         self._set_status_lamp(self.engine_lamps["DATA"], data_level)
         self._set_status_lamp(self.engine_lamps["RISK"], risk_level)

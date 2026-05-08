@@ -36,6 +36,7 @@ class BinanceFeedWorker(QObject):
         self._book = BookState()
         self._book.ws_streams_seen = set()
         self._ws: WebSocketApp | None = None
+        self._first_event_ts_ms = 0.0
 
     def start(self) -> None:
         streams = f"{self.symbol}@aggTrade/{self.symbol}@bookTicker/{self.symbol}@depth20@100ms/{self.symbol}@miniTicker"
@@ -49,6 +50,8 @@ class BinanceFeedWorker(QObject):
 
     def _on_message(self, _: WebSocketApp, raw: str) -> None:
         now_ms = time() * 1000.0
+        if self._first_event_ts_ms <= 0:
+            self._first_event_ts_ms = now_ms
         data = json.loads(raw)
         payload = data.get("data", {})
         stream = data.get("stream", "")
@@ -129,6 +132,8 @@ class BinanceFeedWorker(QObject):
                     "depth_reason": depth_reason,
                     "ws_streams_seen": sorted(list(self._book.ws_streams_seen or set())),
                     "last_stream": self._book.last_stream,
+                    "first_event_ts_ms": self._first_event_ts_ms,
+                    "now_ms": now_ms,
                 }
             )
         else:

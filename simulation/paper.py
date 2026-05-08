@@ -56,6 +56,7 @@ class PaperSimulator:
         self._exec_quality_sum = 0.0
         self._slippage_sum = 0.0
         self._last_lifecycle_event = ""
+        self._trade_events_cursor = 0
 
     def step(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None = None) -> SimulationState:
         now = time()
@@ -110,6 +111,7 @@ class PaperSimulator:
         fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
         if fill is None or fill.price <= 0 or fill.missed:
             self.state.missed_fills += 1
+            self._emit_trade_event("ENTRY_MISSED")
             self._emit_event("ENTRY MISSED")
             self.state.lifecycle_state = "ENTRY_PENDING"
             return
@@ -132,10 +134,14 @@ class PaperSimulator:
         if fill.partial:
             self.state.partial_fills += 1
             self.state.lifecycle_state = "PARTIAL_ENTRY"
-            self._emit_event(f"PARTIAL FILL {max(1,int(100.0 * 0.5))}%")
+            self._emit_trade_event("PARTIAL_FILL")
+            self._emit_event("PARTIAL FILL")
         else:
+            self._emit_trade_event("LONG_OPENED" if direction == "Long" else "SHORT_OPENED")
             self._emit_event("LONG_OPENED" if direction == "Long" else "SHORT_OPENED")
             self.state.lifecycle_state = "ACTIVE_POSITION"
+        self.state.close_latched = False
+        self._emit_trade_event("SETUP_ACCEPTED")
         self.state.accepted_signal_id = signal_id
         self.state.signals_count += 1
         self._signal_strength_sum += snap.trigger_strength
@@ -169,6 +175,8 @@ class PaperSimulator:
             self._close_trade(snap, "TIMEOUT", now)
 
     def _close_trade(self, snap: MarketSnapshot, reason: str, now: float) -> None:
+        if self.state.close_latched:
+            return
         exit_fill = self.execution.exit_fill(self._entry_side, snap.price, snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
         if exit_fill is None or exit_fill.price <= 0 or exit_fill.missed:
             self.state.missed_fills += 1
@@ -189,6 +197,7 @@ class PaperSimulator:
         self.state.net_pnl = net_pnl
         self.state.net_ticks = net_ticks
         self.state.last_trade_result = f"{self._entry_side} {reason} gross {gross_pnl:+.2f} net {net_pnl:+.2f} ({net_ticks:+.1f} ticks)"
+        self._emit_trade_event(f"{reason}_CLOSED")
         self._emit_event(reason)
         self.state.lifecycle_state = "EXITING"
         self.state.last_entry_price = self.state.entry
@@ -236,11 +245,15 @@ class PaperSimulator:
         self.state.unrealized_pnl = 0.0
         self.state.tp_progress = 0.0
         self.state.sl_progress = 0.0
+        self.state.close_latched = True
         self._last_close_ts = now
         self.state.lifecycle_state = "COOLDOWN"
+        self._emit_trade_event("COOLDOWN_STARTED")
         if self._on_trade_closed:
             self._on_trade_closed(self._current_signal_id, reason, net_pnl)
         self._current_signal_id = None
+        self._entry_side = ""
+        self._emit_trade_event("FLAT_READY")
 
     @staticmethod
     def _strength_bucket(strength: float) -> str:
@@ -255,3 +268,6 @@ class PaperSimulator:
         if event != self._last_lifecycle_event:
             self.state.last_event = event
             self._last_lifecycle_event = event
+
+    def _emit_trade_event(self, event: str) -> None:
+        self.state.trade_events.append(event)

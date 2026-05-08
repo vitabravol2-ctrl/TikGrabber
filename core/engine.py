@@ -9,9 +9,10 @@ from metrics.microstructure import MicrostructureTracker
 
 
 class DataQualityGate:
-    def __init__(self, book_stale_ms: float = 2500.0, depth_stale_ms: float = 2500.0) -> None:
+    def __init__(self, book_stale_ms: float = 2500.0, depth_stale_ms: float = 2500.0, book_warmup_grace_ms: float = 3000.0) -> None:
         self.book_stale_ms = book_stale_ms
         self.depth_stale_ms = depth_stale_ms
+        self.book_warmup_grace_ms = book_warmup_grace_ms
 
     def evaluate(self, event: dict, tick_speed: float) -> dict:
         if bool(event.get("legacy_replay", False)):
@@ -26,9 +27,14 @@ class DataQualityGate:
         book_ready = bool(event.get("book_ready", bid > 0 and ask > 0))
         depth_ready_flag = event.get("depth_ready")
         depth_ready = bool(depth_ready_flag) if depth_ready_flag is not None else (depth_age_ms < self.depth_stale_ms or (bid_vol > 0 and ask_vol > 0))
+        first_seen_ms = float(event.get("first_event_ts_ms", 0.0) or 0.0)
+        now_ms = float(event.get("now_ms", 0.0) or 0.0)
+        warmup_elapsed = max(0.0, now_ms - first_seen_ms) if first_seen_ms > 0 and now_ms > 0 else self.book_warmup_grace_ms + 1.0
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if book_age_ms < 0:
+            if warmup_elapsed <= self.book_warmup_grace_ms:
+                return {"data_quality": "Warmup", "data_quality_reason": "WARMUP_BOOK", "book_status": "Warmup", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
             return {"data_quality": "BookMissing", "data_quality_reason": "UNKNOWN_BOOK", "book_status": "Unknown", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if not depth_ready:
             reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < self.depth_stale_ms else "MISSING_DEPTH"
