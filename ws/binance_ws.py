@@ -99,6 +99,7 @@ class BinanceFeedWorker(QObject):
             depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else UNKNOWN_AGE
             mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else UNKNOWN_AGE
             fallback_book = self._book.fallback_active
+            price_source = "DEPTH_FALLBACK" if fallback_book else "BOOKTICKER"
             book_ready = self._book.bid > 0 and self._book.ask > 0
             depth_ready = self._book.bid_volume_total > 0 and self._book.ask_volume_total > 0
             mini_ready = self._book.mini_ticker_ts > 0
@@ -153,6 +154,7 @@ class BinanceFeedWorker(QObject):
                     "book_status": book_status,
                     "depth_status": depth_status,
                     "book_reason": book_reason,
+                    "price_source": price_source,
                     "depth_reason": depth_reason,
                     "ws_streams_seen": sorted(list(self._book.ws_streams_seen or set())),
                     "last_stream": self._book.last_stream,

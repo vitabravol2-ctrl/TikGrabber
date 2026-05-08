@@ -33,7 +33,7 @@ class DataQualityGate:
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if str(event.get("book_status", "")).lower() == "ok_fallback":
-            return {"data_quality": "Good", "data_quality_reason": "BOOK_FALLBACK_DEPTH_TOP", "book_status": "OK_FALLBACK", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": depth_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": depth_ready}
+            return {"data_quality": "Good", "data_quality_reason": "GOOD", "book_status": "OK_FALLBACK", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": depth_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": depth_ready}
         if book_age_ms < 0:
             if warmup_elapsed <= self.book_warmup_grace_ms:
                 return {"data_quality": "Warmup", "data_quality_reason": "WARMUP_BOOK", "book_status": "Warmup", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
@@ -155,6 +155,7 @@ class GameTheoryEngine:
         snapshot.book_age_ms = dq["book_age_ms"]
         snapshot.depth_age_ms = dq["depth_age_ms"]
         snapshot.can_trade_data = dq["can_trade_data"]
+        snapshot.price_source = str(event.get("price_source", "BOOKTICKER"))
         snapshot.ws_status = "Live"
         snapshot.timestamp = now
         return snapshot
