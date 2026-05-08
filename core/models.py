@@ -31,8 +31,24 @@ class MarketSnapshot:
 
 @dataclass
 class SimulationState:
+    mode: str = "LIVE PAPER MODE"
+    last_signal: str = "NONE"
     virtual_position: str = "Flat"
     entry: float = 0.0
+    exit_price: float = 0.0
     pnl_ticks: float = 0.0
+    last_trade_result: str = "-"
+    hold_seconds: float = 0.0
+    trades: int = 0
+    wins: int = 0
+    losses: int = 0
     winrate: float = 0.0
-    trades_count: int = 0
+    avg_pnl: float = 0.0
+    avg_hold_seconds: float = 0.0
+    long_trades: int = 0
+    long_wins: int = 0
+    short_trades: int = 0
+    short_wins: int = 0
+    long_winrate: float = 0.0
+    short_winrate: float = 0.0
+    edge_history: list[float] = field(default_factory=list)

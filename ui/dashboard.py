@@ -3,10 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
     QProgressBar,
@@ -42,8 +40,8 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.1")
-        self.resize(1200, 760)
+        self.setWindowTitle("BTCUSDT Game Theory Engine v0.3")
+        self.resize(1240, 820)
         self.setStyleSheet("QWidget{background:#0f1117;color:#e6e6e6;font-family:Inter,Segoe UI;} QFrame{border:1px solid #202535;border-radius:10px;background:#131722;} QProgressBar{border:none;background:#1a1f2c;height:22px;border-radius:10px;} QProgressBar::chunk{border-radius:10px;background:#1ecb70;}")
 
         root = QWidget()
@@ -56,38 +54,26 @@ class DashboardWindow(QMainWindow):
         self.velocity_label = QLabel("Velocity: 0.00")
         grid.addWidget(self._panel("PRICE PANEL", [self.price_label, self.spread_label, self.velocity_label]), 0, 0, 1, 2)
 
-        self.pressure_bar = QProgressBar()
-        self.pressure_bar.setRange(0, 100)
-        self.pressure_bar.setValue(50)
-        self.pressure_label = QLabel("SELL <=====> BUY | 50/50")
-        grid.addWidget(self._panel("MARKET PRESSURE", [self.pressure_label, self.pressure_bar]), 1, 0, 1, 2)
-
-        self.signal_labels = {k: QLabel(k.upper()) for k in ["sweep_down", "sweep_up", "trap", "reclaim", "panic"]}
-        for label in self.signal_labels.values():
-            label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(34)
-            label.setStyleSheet("background:#1b2130;border-radius:8px;")
-        grid.addWidget(self._panel("LIQUIDITY / TRAP", list(self.signal_labels.values())), 2, 0)
+        self.gauge = EdgeGauge()
+        self.edge_history_bar = QProgressBar()
+        self.edge_history_bar.setRange(0, 100)
+        grid.addWidget(self._panel("EDGE PANEL", [self.gauge, QLabel("EDGE HISTORY"), self.edge_history_bar]), 1, 0)
 
         self.long_bar = QProgressBar()
         self.short_bar = QProgressBar()
         self.long_bar.setRange(0, 100)
         self.short_bar.setRange(0, 100)
         self.intent_label = QLabel("MARKET INTENT: Neutral")
-        grid.addWidget(self._panel("GAME THEORY", [QLabel("LONG PROBABILITY"), self.long_bar, QLabel("SHORT PROBABILITY"), self.short_bar, self.intent_label]), 2, 1)
+        grid.addWidget(self._panel("GAME THEORY", [QLabel("LONG PROBABILITY"), self.long_bar, QLabel("SHORT PROBABILITY"), self.short_bar, self.intent_label]), 1, 1)
 
-        self.gauge = EdgeGauge()
-        grid.addWidget(self._panel("EDGE PANEL", [self.gauge]), 3, 0)
-
-        self.sim_labels = {k: QLabel("-") for k in ["virtual_position", "entry", "pnl_ticks", "winrate", "trades_count"]}
+        self.sim_labels = {k: QLabel("-") for k in ["mode", "last_signal", "virtual_position", "entry", "exit_price", "last_trade_result", "winrate", "avg_pnl", "avg_hold_seconds", "long_winrate", "short_winrate", "trades", "wins", "losses"]}
         sim_widgets = []
-        for key, widget in self.sim_labels.items():
-            sim_widgets += [QLabel(key.replace("_", " ").title()), widget]
-        grid.addWidget(self._panel("SIMULATION", sim_widgets), 3, 1)
+        for key in ["mode", "last_signal", "virtual_position", "entry", "exit_price", "last_trade_result", "trades", "wins", "losses", "winrate", "avg_pnl", "avg_hold_seconds", "long_winrate", "short_winrate"]:
+            sim_widgets += [QLabel(key.replace("_", " ").title()), self.sim_labels[key]]
+        grid.addWidget(self._panel("SIMULATION STATUS", sim_widgets), 2, 0, 1, 2)
 
         self.status_labels = {k: QLabel("-") for k in ["ws_status", "latency", "tps", "quality"]}
-        grid.addWidget(self._panel("DATA STATUS", [QLabel("WS STATUS"), self.status_labels["ws_status"], QLabel("LATENCY"), self.status_labels["latency"], QLabel("TICKS/SEC"), self.status_labels["tps"], QLabel("DATA QUALITY"), self.status_labels["quality"]]), 4, 0, 1, 2)
-
+        grid.addWidget(self._panel("DATA STATUS", [QLabel("WS STATUS"), self.status_labels["ws_status"], QLabel("LATENCY"), self.status_labels["latency"], QLabel("TICKS/SEC"), self.status_labels["tps"], QLabel("DATA QUALITY"), self.status_labels["quality"]]), 3, 0, 1, 2)
         self.setCentralWidget(root)
 
     def _panel(self, title: str, widgets: list[QWidget]) -> QFrame:
@@ -103,26 +89,28 @@ class DashboardWindow(QMainWindow):
         self.price_label.setStyleSheet(f"font-size:56px;font-weight:700;color:{'#1ecb70' if snap.velocity >=0 else '#ff4d4d'};")
         self.spread_label.setText(f"Spread: {snap.spread:.2f}")
         self.velocity_label.setText(f"Velocity: {snap.velocity:+.2f}/s")
-
-        buy = int(snap.buy_pressure * 100)
-        self.pressure_bar.setValue(buy)
-        self.pressure_label.setText(f"SELL <=====> BUY | {100-buy}/{buy}")
-
-        for key, val in [("sweep_down", snap.sweep_down), ("sweep_up", snap.sweep_up), ("trap", snap.trap), ("reclaim", snap.reclaim), ("panic", snap.panic)]:
-            alpha = int(30 + val * 200)
-            color = "255,77,77" if key in {"panic", "sweep_down", "trap"} else "30,203,112"
-            self.signal_labels[key].setStyleSheet(f"background:rgba({color},{alpha});border-radius:8px;")
-
         self.long_bar.setValue(int(snap.long_probability))
         self.short_bar.setValue(int(snap.short_probability))
         self.intent_label.setText(f"MARKET INTENT: {snap.market_intent}")
         self.gauge.set_value(snap.edge_score)
 
+        self.sim_labels["mode"].setText(sim.mode)
+        self.sim_labels["last_signal"].setText(sim.last_signal)
         self.sim_labels["virtual_position"].setText(sim.virtual_position)
         self.sim_labels["entry"].setText(f"{sim.entry:.2f}")
-        self.sim_labels["pnl_ticks"].setText(f"{sim.pnl_ticks:+.2f}")
+        self.sim_labels["exit_price"].setText(f"{sim.exit_price:.2f}")
+        self.sim_labels["last_trade_result"].setText(sim.last_trade_result)
+        self.sim_labels["trades"].setText(str(sim.trades))
+        self.sim_labels["wins"].setText(str(sim.wins))
+        self.sim_labels["losses"].setText(str(sim.losses))
         self.sim_labels["winrate"].setText(f"{sim.winrate:.1f}%")
-        self.sim_labels["trades_count"].setText(str(sim.trades_count))
+        self.sim_labels["avg_pnl"].setText(f"{sim.avg_pnl:+.2f} ticks")
+        self.sim_labels["avg_hold_seconds"].setText(f"{sim.avg_hold_seconds:.1f}s")
+        self.sim_labels["long_winrate"].setText(f"{sim.long_winrate:.1f}%")
+        self.sim_labels["short_winrate"].setText(f"{sim.short_winrate:.1f}%")
+
+        edge_strength = min(100, int(abs(sum(sim.edge_history[-10:]) / max(1, len(sim.edge_history[-10:]))) ))
+        self.edge_history_bar.setValue(edge_strength)
 
         self.status_labels["ws_status"].setText(snap.ws_status)
         self.status_labels["latency"].setText(f"{snap.latency_ms:.0f} ms")
