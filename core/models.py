@@ -76,7 +76,7 @@ class SignalAnalyticsState:
 
 @dataclass
 class SimulationState:
-    mode: str = "REALISTIC PAPER"
+    mode: str = "NEAR_LIVE_PAPER"
     last_signal: str = "NONE"
     virtual_position: str = "Flat"
     entry: float = 0.0
@@ -142,11 +142,31 @@ class SimulationState:
     lifecycle_state: str = "FLAT"
     trade_events: list[str] = field(default_factory=list)
     close_latched: bool = False
+    order_status: str = "-"
+    order_side: str = "-"
+    order_type: str = "-"
+    order_price: float = 0.0
+    order_filled_pct: float = 0.0
+    order_avg_fill: float = 0.0
+    order_age_ms: float = 0.0
+    active_order: bool = False
+    sequence_name: str = ""
+    sequence_confidence: float = 0.0
+    setup_explanation: str = ""
+    signals_candidates: int = 0
+    signals_accepted: int = 0
+    signals_rejected: int = 0
+    orders_new: int = 0
+    orders_filled: int = 0
+    orders_partial: int = 0
+    orders_canceled: int = 0
+    orders_expired: int = 0
+    orders_rejected: int = 0
 
 
 @dataclass
 class FuturesExecutionConfig:
-    mode: str = "REALISTIC PAPER"
+    mode: str = "NEAR_LIVE_PAPER"
     leverage: float = 1.0
     execution: str = "SIMULATED"
     fees_enabled: bool = True
@@ -169,3 +189,19 @@ class FuturesPositionModel:
     unrealized_pnl: float = 0.0
     liquidation_price: float = 0.0
     liquidation_distance_pct: float = 0.0
+
+
+@dataclass
+class SimOrder:
+    order_id: str
+    side: str
+    position_side: str
+    order_type: str
+    price: float
+    qty: float
+    filled_qty: float = 0.0
+    avg_fill_price: float = 0.0
+    created_ts: float = field(default_factory=time)
+    updated_ts: float = field(default_factory=time)
+    status: str = "NEW"
+    reason: str = ""
