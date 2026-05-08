@@ -68,7 +68,7 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.6")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v0.7")
         self.resize(1240, 760)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
@@ -195,7 +195,7 @@ class DashboardWindow(QMainWindow):
     def _build_simulation_panel(self) -> QFrame:
         panel, lay = self._panel("SIMULATION CARDS")
         cards = QGridLayout()
-        self.sim_cards = {k: QLabel("-") for k in ["trades", "winrate", "pnl_ticks", "active_trade", "hold", "tp_sl", "sig_per_h", "avg_strength", "last_trade"]}
+        self.sim_cards = {k: QLabel("-") for k in ["mode", "trades", "winrate", "pnl_ticks", "gross_pnl", "fees", "net_pnl", "net_ticks", "cooldown", "active_trade", "hold", "tp_sl", "sig_per_h", "avg_strength", "last_trade"]}
         for i, (k, lbl) in enumerate(self.sim_cards.items()):
             box = QFrame(); box.setStyleSheet("QFrame{background:#0e1521;border:1px solid #2a3650;border-radius:8px;}")
             bl = QVBoxLayout(box)
@@ -232,9 +232,15 @@ class DashboardWindow(QMainWindow):
         self.quality_label.setStyleSheet(f"font-size:44px;font-weight:800;color:{quality_colors.get(quality, '#ff6b6b')};")
         self.validation_label.setText(f"Validation: conf {sim.analytics.signal_confidence:.1f}% | data {snap.data_quality}")
 
+        self.sim_cards["mode"].setText(sim.mode)
         self.sim_cards["trades"].setText(str(sim.trades))
         self.sim_cards["winrate"].setText(f"{sim.winrate:.1f}%")
         self.sim_cards["pnl_ticks"].setText(f"{sim.pnl_ticks:+.1f}")
+        self.sim_cards["gross_pnl"].setText(f"{sim.gross_pnl:+.2f}")
+        self.sim_cards["fees"].setText(f"-{sim.fees_paid:.2f}")
+        self.sim_cards["net_pnl"].setText(f"{sim.net_pnl:+.2f}")
+        self.sim_cards["net_ticks"].setText(f"{sim.net_ticks:+.1f}")
+        self.sim_cards["cooldown"].setText(f"{sim.cooldown_seconds_left:.1f}s" if sim.cooldown_active else "READY")
         self.sim_cards["active_trade"].setText(f"{sim.active_trade_side} @ {sim.entry:.2f}" if sim.active_trade_side != "-" else "-")
         self.sim_cards["hold"].setText(f"{sim.hold_seconds:.1f}s")
         self.sim_cards["tp_sl"].setText(f"TP {sim.tp_progress:.0f}% / SL {sim.sl_progress:.0f}%")
