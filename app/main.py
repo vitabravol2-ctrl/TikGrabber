@@ -53,6 +53,14 @@ class AppController:
             return
         if not self.replay_file:
             ReplayEventStore.append_event("data/replay/btcusdt_events.jsonl", event)
+        elif "book_age_ms" not in event or "depth_age_ms" not in event:
+            event["legacy_replay"] = True
+            event.setdefault("book_age_ms", 0.0)
+            event.setdefault("depth_age_ms", 0.0)
+            event.setdefault("bid", float(event.get("bid", 0.0)))
+            event.setdefault("ask", float(event.get("ask", 0.0)))
+            event.setdefault("bid_volume_total", float(event.get("bid_volume_total", 0.0)))
+            event.setdefault("ask_volume_total", float(event.get("ask_volume_total", 0.0)))
         self.snapshot = self.engine.update(self.snapshot, event)
         self.validator.register_event(self.snapshot)
 
