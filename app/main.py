@@ -84,9 +84,24 @@ class AppController:
         direction_sign = 1.0 if self.snapshot.best_direction == "LONG" else -1.0
         self.snapshot.expected_move_usdt = (expected_move_abs / max(self.snapshot.price, 1e-9)) * self.sim.scalp.order_notional_usdt
         self.snapshot.expected_move_bps = (expected_move_abs / max(self.snapshot.price, 1e-9)) * 10000.0
-        net_profit, _ = self.cost_model.net_profit_usdt(self.sim.scalp.order_notional_usdt, self.snapshot.expected_move_bps)
-        self.snapshot.net_expected_profit_after_costs = net_profit * direction_sign if direction_sign > 0 else net_profit
-        self.snapshot.minimum_real_move_usdt = self.cost_model.minimum_real_move_usdt
+        breakdown = self.cost_model.calculate(
+            notional_usdt=self.sim.scalp.order_notional_usdt,
+            expected_move_usdt=self.snapshot.expected_move_usdt,
+            spread_usdt=max(0.0, self.snapshot.spread),
+            fee_mode=self.sim.scalp.fee_mode,
+            tick_size=self.sim.tick_size,
+        )
+        self.snapshot.required_move_usdt = breakdown.required_gross_move_usdt
+        self.snapshot.required_move_ticks = breakdown.required_ticks
+        self.snapshot.required_move_bps = breakdown.required_gross_move_bps
+        self.snapshot.fee_cost_usdt = breakdown.round_trip_fee
+        self.snapshot.slippage_cost_usdt = breakdown.slippage_cost
+        self.snapshot.spread_cost_usdt = breakdown.spread_cost
+        self.snapshot.funding_buffer_usdt = breakdown.funding_buffer
+        self.snapshot.net_expected_profit_after_costs = breakdown.net_profit_after_costs * direction_sign if direction_sign > 0 else breakdown.net_profit_after_costs
+        self.snapshot.minimum_real_move_usdt = breakdown.required_gross_move_usdt
+        self.snapshot.tp_target_usdt = breakdown.required_gross_move_usdt * self.sim.scalp.safety_profit_multiplier
+        self.snapshot.sl_target_usdt = min(max(self.snapshot.tp_target_usdt * 0.8, self.snapshot.tp_target_usdt * 0.8), self.snapshot.tp_target_usdt * 1.2)
 
         signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
         candidate_direction = signal.value if signal.value != "NONE" else "NONE"
@@ -102,6 +117,8 @@ class AppController:
             allowed, reason = self.risk.evaluate_entry(self.snapshot, self.position, 1.0, self.sim.state.cooldown_active)
             if not allowed:
                 self.snapshot.block_reason = reason
+                if reason == "NO_REAL_PROFIT":
+                    self.snapshot.block_detail = f"exp ${self.snapshot.expected_move_usdt:.2f} < req ${self.snapshot.required_move_usdt:.2f}"
                 self.blocked_reasons[reason] += 1
         self.snapshot.risk_allowed = allowed
         armed_signal = signal if self._arm_setup(signal.value, allowed) else type(signal).NO_SIGNAL
@@ -118,6 +135,8 @@ class AppController:
             if self.snapshot.block_reason == "NONE" and self.snapshot.candidate_quality == "A":
                 if not self.snapshot.risk_allowed:
                     self.snapshot.block_reason = reason
+                if reason == "NO_REAL_PROFIT":
+                    self.snapshot.block_detail = f"exp ${self.snapshot.expected_move_usdt:.2f} < req ${self.snapshot.required_move_usdt:.2f}"
                 elif self.sim.state.cooldown_active:
                     self.snapshot.block_reason = "COOLDOWN"
                 elif self.snapshot.active_position:
