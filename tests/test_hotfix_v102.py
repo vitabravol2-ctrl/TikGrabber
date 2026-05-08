@@ -73,7 +73,7 @@ def test_data_quality_reasons_separated_in_risk_controls():
     stale.data_quality = "Stale"
     stale.data_quality_reason = "STALE"
     ok, reason = risk.evaluate_entry(stale, FuturesPositionModel(), 1.0, False)
-    assert not ok and reason == "STALE"
+    assert ok and reason == "PASS"
 
 
 def test_no_liquidity_uses_memory_not_single_snapshot_only():

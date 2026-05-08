@@ -22,8 +22,9 @@ class FuturesRiskControls:
         requested_leverage: float,
         cooldown_active: bool,
     ) -> tuple[bool, str]:
-        if snap.data_quality != "Good":
-            return False, snap.data_quality_reason or "DATA_QUALITY"
+        block_reasons = {"MISSING_BOOK_TICKER", "MISSING_DEPTH", "STALE_BOOK", "STALE_DEPTH"}
+        if snap.data_quality_reason in block_reasons:
+            return False, snap.data_quality_reason
         if snap.spread <= 0 or snap.spread > self.max_spread:
             return False, "SPREAD"
         if abs(snap.velocity) > self.max_volatility:

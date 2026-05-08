@@ -71,7 +71,7 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v1.0.1")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v1.0.3")
         self.resize(1600, 900)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
@@ -180,6 +180,20 @@ class DashboardWindow(QMainWindow):
             badge_grid.addWidget(badge, i // 2, i % 2)
         sl.addLayout(badge_grid)
         lay.addWidget(states)
+
+        data_panel, dl = self._panel("BOOK / DATA STATUS")
+        self.book_data_labels = {
+            "book": QLabel("Book: Missing"),
+            "depth": QLabel("Depth: Missing"),
+            "book_age": QLabel("Book Age: - ms"),
+            "depth_age": QLabel("Depth Age: - ms"),
+            "quality": QLabel("Reason: WARMUP_TRADES"),
+        }
+        for lbl in self.book_data_labels.values():
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size:12px;")
+            dl.addWidget(lbl)
+        lay.addWidget(data_panel)
         return col
 
     def _build_right_col(self) -> QWidget:
@@ -336,6 +350,12 @@ class DashboardWindow(QMainWindow):
         self.quality_label.setText(quality if quality in quality_colors else "D")
         self.quality_label.setStyleSheet(f"font-size:44px;font-weight:800;color:{quality_colors.get(quality, '#ff6b6b')};")
         self.validation_label.setText(f"Validation: conf {sim.analytics.signal_confidence:.1f}% | data {snap.data_quality}")
+
+        self.book_data_labels["book"].setText(f"Book: {snap.book_status}")
+        self.book_data_labels["depth"].setText(f"Depth: {snap.depth_status}")
+        self.book_data_labels["book_age"].setText(f"Book Age: {snap.book_age_ms:.0f} ms")
+        self.book_data_labels["depth_age"].setText(f"Depth Age: {snap.depth_age_ms:.0f} ms")
+        self.book_data_labels["quality"].setText(f"Reason: {snap.data_quality_reason}")
 
         self.sim_cards["trades"].setText(str(sim.trades))
         self.sim_cards["winrate"].setText(f"{sim.winrate:.1f}%")

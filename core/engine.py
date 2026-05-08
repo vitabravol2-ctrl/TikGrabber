@@ -9,10 +9,39 @@ from metrics.microstructure import MicrostructureTracker
 
 
 class GameTheoryEngine:
+    DEPTH_STALE_MS = 2500.0
+    BOOK_STALE_MS = 2500.0
+
     def __init__(self) -> None:
         self._tracker = MicrostructureTracker()
         self._state_engine = MarketStateEngine()
         self._gt = GameTheoryModule()
+
+
+    def _data_quality(self, event: dict, tick_speed: float) -> tuple[str, str, str, str, float, float]:
+        if bool(event.get("legacy_replay", False)):
+            return "Legacy", "LEGACY_REPLAY", "Missing", "Missing", float(event.get("book_age_ms", 0.0) or 0.0), float(event.get("depth_age_ms", 0.0) or 0.0)
+
+        book_age_ms = float(event.get("book_age_ms", 1e9) or 1e9)
+        depth_age_ms = float(event.get("depth_age_ms", 1e9) or 1e9)
+        bid = float(event.get("bid", 0.0))
+        ask = float(event.get("ask", 0.0))
+        bid_vol = float(event.get("bid_volume_total", 0.0))
+        ask_vol = float(event.get("ask_volume_total", 0.0))
+
+        if tick_speed < 2:
+            return "Warmup", "WARMUP_TRADES", "Missing", "Missing", book_age_ms, depth_age_ms
+        if bid <= 0 or ask <= 0:
+            return "BookMissing", "MISSING_BOOK_TICKER", "Missing", "Missing" if bid_vol <= 0 or ask_vol <= 0 else "OK", book_age_ms, depth_age_ms
+        if book_age_ms >= self.BOOK_STALE_MS:
+            return "Stale", "STALE_BOOK", "Stale", "OK" if bid_vol > 0 and ask_vol > 0 else "Missing", book_age_ms, depth_age_ms
+        if bid_vol <= 0 or ask_vol <= 0:
+            return "BookMissing", "MISSING_DEPTH", "OK", "Missing", book_age_ms, depth_age_ms
+        if depth_age_ms >= self.DEPTH_STALE_MS:
+            return "Stale", "STALE_DEPTH", "OK", "Stale", book_age_ms, depth_age_ms
+        if tick_speed < 4:
+            return "Unstable", "WS_UNSTABLE", "OK", "OK", book_age_ms, depth_age_ms
+        return "Good", "GOOD", "OK", "OK", book_age_ms, depth_age_ms
 
     def update(self, snapshot: MarketSnapshot, event: dict) -> MarketSnapshot:
         now = time()
@@ -59,21 +88,13 @@ class GameTheoryEngine:
         snapshot.volume_24h = m.mini_volume_24h
         snapshot.latency_ms = max(0.0, time() * 1000.0 - float(event.get("event_time", 0)))
         snapshot.ticks_per_second = m.tick_speed
-        if m.tick_speed < 2:
-            snapshot.data_quality = "Warmup"
-            snapshot.data_quality_reason = "WARMUP"
-        elif snapshot.latency_ms > 2500:
-            snapshot.data_quality = "Stale"
-            snapshot.data_quality_reason = "STALE"
-        elif float(event.get("bid_volume_total", 0.0)) <= 0 or float(event.get("ask_volume_total", 0.0)) <= 0:
-            snapshot.data_quality = "BookMissing"
-            snapshot.data_quality_reason = "MISSING_BOOK"
-        elif m.tick_speed < 4:
-            snapshot.data_quality = "Unstable"
-            snapshot.data_quality_reason = "WS_UNSTABLE"
-        else:
-            snapshot.data_quality = "Good"
-            snapshot.data_quality_reason = "GOOD"
+        data_quality, quality_reason, book_status, depth_status, book_age_ms, depth_age_ms = self._data_quality(event, m.tick_speed)
+        snapshot.data_quality = data_quality
+        snapshot.data_quality_reason = quality_reason
+        snapshot.book_status = book_status
+        snapshot.depth_status = depth_status
+        snapshot.book_age_ms = book_age_ms
+        snapshot.depth_age_ms = depth_age_ms
         snapshot.ws_status = "Live"
         snapshot.timestamp = now
         return snapshot

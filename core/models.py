@@ -38,6 +38,10 @@ class MarketSnapshot:
     expected_move_ticks: float = 0.0
     min_profitable_ticks: float = 0.0
     liquidity_regime_score: float = 0.0
+    book_age_ms: float = 0.0
+    depth_age_ms: float = 0.0
+    book_status: str = "Missing"
+    depth_status: str = "Missing"
 
 
 @dataclass
