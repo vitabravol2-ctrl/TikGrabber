@@ -60,8 +60,8 @@ class BinanceFeedWorker(QObject):
             self._book.ask_qty = float(payload.get("A", 0.0))
             self._book.book_ticker_ts = now_ms
         elif "depth20" in stream:
-            bids = payload.get("b", [])
-            asks = payload.get("a", [])
+            bids = payload.get("bids") or payload.get("b") or []
+            asks = payload.get("asks") or payload.get("a") or []
             self._book.bid_volume_total = sum(float(b[1]) for b in bids)
             self._book.ask_volume_total = sum(float(a[1]) for a in asks)
             total = self._book.bid_volume_total + self._book.ask_volume_total
@@ -92,7 +92,7 @@ class BinanceFeedWorker(QObject):
                 book_reason = "GOOD"
             if not depth_ready:
                 depth_status = "missing"
-                depth_reason = "MISSING_DEPTH"
+                depth_reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < 2500.0 else "MISSING_DEPTH"
             elif depth_age_ms >= 2500.0:
                 depth_status = "stale"
                 depth_reason = "STALE_DEPTH"

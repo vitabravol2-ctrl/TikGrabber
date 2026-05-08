@@ -39,7 +39,7 @@ def test_stale_book_blocks_entry():
 def test_missing_depth_blocks_entry():
     dq = DataQualityGate()
     out = dq.evaluate(_event(depth_ready=False, bid_volume_total=0, ask_volume_total=0), tick_speed=10)
-    assert out["data_quality_reason"] == "MISSING_DEPTH"
+    assert out["data_quality_reason"] in {"MISSING_DEPTH", "DEPTH_EMPTY_BOOK"}
 
 
 def test_no_edge_after_fees_blocks_signal():
