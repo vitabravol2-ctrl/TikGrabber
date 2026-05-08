@@ -18,13 +18,15 @@ class MarketSnapshot:
     panic: float = 0.0
     long_probability: float = 50.0
     short_probability: float = 50.0
-    market_intent: str = "Neutral"
+    market_intent: str = "BALANCED"
     edge_score: float = 0.0
     latency_ms: float = 0.0
     ticks_per_second: float = 0.0
     data_quality: str = "Warmup"
     ws_status: str = "Disconnected"
     timestamp: float = field(default_factory=time)
+    trap_probability: float = 0.0
+    volume_24h: float = 0.0
 
 
 @dataclass

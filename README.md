@@ -1,4 +1,4 @@
-# BTCUSDT Game Theory Engine v0.1
+# BTCUSDT Game Theory Engine v0.2
 
 Minimalistic live GUI for BTCUSDT market-state monitoring using Binance websocket data.
 
@@ -18,6 +18,9 @@ or bootstrap env:
 
 - `app/` runtime orchestration
 - `ui/` PySide6 adaptive dashboard
-- `core/` state models + simple game-theory heuristics
-- `market/` Binance websocket feed (`trade`, `depth`, `bookTicker`)
+- `core/` integration pipeline to snapshot
+- `ws/` Binance websocket feed (`aggTrade`, `depth20`, `bookTicker`, `miniTicker`)
+- `metrics/` microstructure metrics (aggression, velocity, imbalance, spread behavior)
+- `market_state/` finite-state market regime detector
+- `game_theory/` long/short pressure + trap probability + edge score
 - `simulation/` paper-mode virtual position block
