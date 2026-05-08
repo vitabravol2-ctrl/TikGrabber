@@ -42,6 +42,7 @@ class MarketSnapshot:
     depth_age_ms: float = 0.0
     book_status: str = "Missing"
     depth_status: str = "Missing"
+    can_trade_data: bool = False
 
 
 @dataclass

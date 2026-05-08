@@ -22,6 +22,8 @@ class FuturesRiskControls:
         requested_leverage: float,
         cooldown_active: bool,
     ) -> tuple[bool, str]:
+        if not snap.can_trade_data:
+            return False, snap.data_quality_reason
         block_reasons = {"MISSING_BOOK_TICKER", "MISSING_DEPTH", "STALE_BOOK", "STALE_DEPTH"}
         if snap.data_quality_reason in block_reasons:
             return False, snap.data_quality_reason
