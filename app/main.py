@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from core.engine import GameTheoryEngine
 from core.models import FuturesPositionModel, MarketSnapshot
 from core.futures_costs import FuturesCostModel
+from core.opportunity_engine import RealOpportunityEngine
 from decision_engine import SignalDecisionEngine
 from replay import ReplayEngine, ReplayEventStore
 from risk.controls import FuturesRiskControls
@@ -45,6 +46,7 @@ class AppController:
         self.position = FuturesPositionModel()
         self.blocked_reasons = Counter()
         self.cost_model = FuturesCostModel()
+        self.opportunity_engine = RealOpportunityEngine()
         self._setup_arm_direction = "NONE"
         self._setup_arm_regime_family = "NONE"
         self._setup_arm_ticks = 0
@@ -102,6 +104,26 @@ class AppController:
         self.snapshot.minimum_real_move_usdt = breakdown.required_gross_move_usdt
         self.snapshot.tp_target_usdt = breakdown.required_gross_move_usdt * self.sim.scalp.safety_profit_multiplier
         self.snapshot.sl_target_usdt = min(max(self.snapshot.tp_target_usdt * 0.8, self.snapshot.tp_target_usdt * 0.8), self.snapshot.tp_target_usdt * 1.2)
+
+        opp = self.opportunity_engine.evaluate(self.snapshot, self.sim.scalp.order_notional_usdt)
+        self.snapshot.continuation_strength = opp.continuation_strength
+        self.snapshot.breakout_energy = opp.breakout_energy
+        self.snapshot.trapped_liquidity_score = opp.trapped_liquidity_score
+        self.snapshot.impulse_probability = opp.impulse_probability
+        self.snapshot.acceleration_score = opp.acceleration_score
+        self.snapshot.liquidation_potential = opp.liquidation_potential
+        self.snapshot.momentum_persistence = opp.momentum_persistence
+        self.snapshot.expected_move_ticks_real = opp.expected_move_ticks_real
+        self.snapshot.expected_move_usdt_real = opp.expected_move_usdt_real
+        self.snapshot.opportunity_score = opp.opportunity_score
+        self.snapshot.real_opportunity = opp.real_opportunity
+        self.snapshot.microstructure_state = opp.microstructure_state
+        if opp.microstructure_state == "CASCADE_SETUP":
+            self.snapshot.position_mode = "CASCADE_SCALP"
+        elif opp.microstructure_state in {"TRAPPED_SHORTS", "TRAPPED_LONGS", "STOP_HUNT_ACTIVE"}:
+            self.snapshot.position_mode = "LIQUIDITY_SWEEP_SCALP"
+        elif self.snapshot.market_phase in {"BREAKOUT", "TREND"}:
+            self.snapshot.position_mode = "BREAKOUT_SCALP"
 
         signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
         candidate_direction = signal.value if signal.value != "NONE" else "NONE"

@@ -87,6 +87,18 @@ class MarketSnapshot:
     entry_reason: str = "-"
     setup_armed: bool = False
     setup_armed_ticks: int = 0
+    continuation_strength: float = 0.0
+    breakout_energy: float = 0.0
+    trapped_liquidity_score: float = 0.0
+    impulse_probability: float = 0.0
+    acceleration_score: float = 0.0
+    liquidation_potential: float = 0.0
+    momentum_persistence: float = 0.0
+    expected_move_ticks_real: float = 0.0
+    expected_move_usdt_real: float = 0.0
+    opportunity_score: float = 0.0
+    real_opportunity: bool = False
+    microstructure_state: str = "MICRO_RANGE_CHOP"
 
 
 @dataclass

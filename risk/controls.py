@@ -53,7 +53,27 @@ class FuturesRiskControls:
                 return False, "EDGE_UNSTABLE"
             if snap.expected_move_ticks < (snap.min_profitable_ticks + self.safety_buffer_ticks):
                 return False, "MOVE_TOO_SMALL"
-            if snap.expected_move_usdt > 0 or snap.net_expected_profit_after_costs != 0:
+            advanced_opportunity_mode = snap.opportunity_score > 0 or snap.expected_move_ticks_real > 0
+            if advanced_opportunity_mode:
+                if snap.opportunity_score < 35:
+                    return False, "LOW_OPPORTUNITY"
+                if snap.continuation_strength < 45:
+                    return False, "WEAK_CONTINUATION"
+                if snap.impulse_probability < 45:
+                    return False, "LOW_IMPULSE"
+                if snap.microstructure_state == "MICRO_RANGE_CHOP":
+                    return False, "MICRO_CHOP"
+                if snap.exhaustion_score >= 70:
+                    return False, "HIGH_EXHAUSTION"
+                if snap.reversal_probability >= 68:
+                    return False, "REVERSAL_RISK"
+                if snap.microstructure_state not in {"LIQUIDITY_VACUUM", "CASCADE_SETUP", "TRAPPED_SHORTS", "TRAPPED_LONGS", "FOMO_CONTINUATION", "STOP_HUNT_ACTIVE"}:
+                    return False, "NO_LIQUIDITY_VACUUM"
+                if snap.position_mode == "SCALP_CONTINUATION" and snap.microstructure_state != "CASCADE_SETUP" and snap.liquidation_potential < 50:
+                    return False, "NO_CASCADE_SETUP"
+                if not snap.real_opportunity or snap.expected_move_usdt_real <= (snap.required_move_usdt * 1.5):
+                    return False, "NO_REAL_PROFIT"
+            elif snap.expected_move_usdt > 0 or snap.net_expected_profit_after_costs != 0:
                 if snap.expected_move_usdt < snap.required_move_usdt or snap.net_expected_profit_after_costs <= 0:
                     return False, "NO_REAL_PROFIT"
             if snap.late_entry_risk == "HIGH" or snap.late_move_penalty > 0.55:
