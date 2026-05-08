@@ -152,7 +152,7 @@ class DashboardWindow(QMainWindow):
         self.scalp_strip = QLabel("PROFILE - | BUDGET - | ORDER - | LEV - | TP - | SL - | TIMEOUT - | COOLDOWN - | MAX LOSS -")
         self.scalp_strip.setStyleSheet("font-size:11px;color:#9bc1ff;padding:3px 4px;background:#131f34;border:1px solid #2a4068;border-radius:6px;")
         lay.addWidget(self.scalp_strip)
-        keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REQ MOVE", "COST", "TARGET", "NET IF TP", "BLOCK", "SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
+        keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REQ MOVE", "COST", "TARGET", "NET IF TP", "BLOCK", "EDGE PACK", "TRIGGER", "EXPECTED MOVE", "BLOCK REASON", "SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
         for key in keys:
             lbl = QLabel(f"{key}: -")
             lbl.setStyleSheet("font-size:12px;")
