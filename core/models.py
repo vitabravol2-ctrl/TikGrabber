@@ -33,6 +33,11 @@ class MarketSnapshot:
     short_debug: str = ""
     block_reason: str = ""
     trigger_strength: float = 0.0
+    data_quality_reason: str = "WARMUP"
+    net_edge_score: float = 0.0
+    expected_move_ticks: float = 0.0
+    min_profitable_ticks: float = 0.0
+    liquidity_regime_score: float = 0.0
 
 
 @dataclass

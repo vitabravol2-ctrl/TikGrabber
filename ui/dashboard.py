@@ -380,7 +380,8 @@ class DashboardWindow(QMainWindow):
         entry_text = f"{sim.entry:.2f}" if sim.virtual_position != "Flat" else "-"
         market_flow_line = f"STATE {snap.market_intent[:12]} | EDGE {snap.edge_score:+.0f} | BLOCK {block[:14]} | SIGNAL {sim.last_signal} | STR {snap.trigger_strength:.1f}"
         last_exit_text = f"{sim.last_exit_price:.2f}" if sim.last_exit_price else "-"
-        trade_flow_line = f"EVENT {sim.last_event} | POS {sim.virtual_position} | E {entry_text} | LX {last_exit_text} | NET {sim.last_net_pnl:+.2f} | FEES {sim.fees_paid:.2f} | HOLD {sim.hold_seconds:.1f}s"
+        flow_hold = sim.hold_seconds if sim.virtual_position != "Flat" else sim.last_hold_seconds
+        trade_flow_line = f"EVENT {sim.last_event} | POS {sim.virtual_position} | E {entry_text} | LX {last_exit_text} | NET {sim.last_net_pnl:+.2f} | FEES {sim.fees_paid:.2f} | HOLD {flow_hold:.1f}s"
         if self._event_guard.should_emit("market_flow", market_flow_line):
             self.flow_terminal.append(market_flow_line)
         if self._event_guard.should_emit("trade_flow", f"{sim.last_event}:{sim.virtual_position}"):

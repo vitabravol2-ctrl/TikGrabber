@@ -59,7 +59,21 @@ class GameTheoryEngine:
         snapshot.volume_24h = m.mini_volume_24h
         snapshot.latency_ms = max(0.0, time() * 1000.0 - float(event.get("event_time", 0)))
         snapshot.ticks_per_second = m.tick_speed
-        snapshot.data_quality = "Good" if m.tick_speed >= 4 else "Warmup"
+        if m.tick_speed < 2:
+            snapshot.data_quality = "Warmup"
+            snapshot.data_quality_reason = "WARMUP"
+        elif snapshot.latency_ms > 2500:
+            snapshot.data_quality = "Stale"
+            snapshot.data_quality_reason = "STALE"
+        elif float(event.get("bid_volume_total", 0.0)) <= 0 or float(event.get("ask_volume_total", 0.0)) <= 0:
+            snapshot.data_quality = "BookMissing"
+            snapshot.data_quality_reason = "MISSING_BOOK"
+        elif m.tick_speed < 4:
+            snapshot.data_quality = "Unstable"
+            snapshot.data_quality_reason = "WS_UNSTABLE"
+        else:
+            snapshot.data_quality = "Good"
+            snapshot.data_quality_reason = "GOOD"
         snapshot.ws_status = "Live"
         snapshot.timestamp = now
         return snapshot
