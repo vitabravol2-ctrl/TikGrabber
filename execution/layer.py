@@ -4,13 +4,14 @@ from dataclasses import dataclass
 
 from core.models import FuturesExecutionConfig, SimulationState
 
+LIVE_TRADING_ENABLED = False
+API_KEYS_ALLOWED = False
+REAL_ORDERS_ALLOWED = False
+
 
 @dataclass
 class FuturesExecutionLayer:
-    """Execution adapter for future live-trading integration.
-
-    Current scope is intentionally limited to realistic paper execution.
-    """
+    """Execution adapter for paper futures only."""
 
     config: FuturesExecutionConfig
 
@@ -24,7 +25,12 @@ class FuturesExecutionLayer:
         }
 
     def can_route_live_order(self) -> bool:
-        return False
+        return LIVE_TRADING_ENABLED and REAL_ORDERS_ALLOWED and API_KEYS_ALLOWED
+
+    def assert_paper_only(self) -> None:
+        if self.can_route_live_order():
+            raise RuntimeError("Live trading is blocked in v0.8 paper-only mode")
 
     def bind_simulation(self, sim: SimulationState) -> SimulationState:
+        self.assert_paper_only()
         return sim
