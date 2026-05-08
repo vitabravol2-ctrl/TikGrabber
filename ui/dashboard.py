@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QSizePolicy,
     QTextEdit,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -70,7 +71,7 @@ class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BTCUSDT Game Theory Engine v0.7.1")
-        self.resize(1240, 760)
+        self.resize(1600, 900)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
             "QFrame{border:1px solid #222d42;border-radius:10px;background:#131a25;}"
@@ -84,22 +85,32 @@ class DashboardWindow(QMainWindow):
         main.setSpacing(10)
         main.setContentsMargins(10, 10, 10, 10)
 
-        main.addWidget(self._build_top_panel())
+        main_split = QSplitter(Qt.Vertical)
+        main_split.setChildrenCollapsible(False)
+        main_split.addWidget(self._build_top_panel())
 
         mid_split = QSplitter(Qt.Horizontal)
         mid_split.setChildrenCollapsible(False)
         mid_split.addWidget(self._build_left_col())
         mid_split.addWidget(self._build_center_col())
         mid_split.addWidget(self._build_right_col())
-        mid_split.setSizes([380, 360, 360])
-        main.addWidget(mid_split, 1)
+        mid_split.setStretchFactor(0, 1)
+        mid_split.setStretchFactor(1, 1)
+        mid_split.setStretchFactor(2, 1)
+        mid_split.setSizes([520, 520, 520])
+        main_split.addWidget(mid_split)
 
         bottom_split = QSplitter(Qt.Horizontal)
         bottom_split.setChildrenCollapsible(False)
         bottom_split.addWidget(self._build_signal_flow_panel())
-        bottom_split.addWidget(self._build_simulation_panel())
-        bottom_split.setSizes([660, 560])
-        main.addWidget(bottom_split, 1)
+        bottom_split.addWidget(self._build_simulation_scroll_panel())
+        bottom_split.setStretchFactor(0, 3)
+        bottom_split.setStretchFactor(1, 2)
+        bottom_split.setSizes([980, 620])
+        main_split.addWidget(bottom_split)
+        main_split.setSizes([120, 390, 390])
+
+        main.addWidget(main_split, 1)
 
         self.setCentralWidget(root)
 
@@ -191,6 +202,8 @@ class DashboardWindow(QMainWindow):
 
     def _build_signal_flow_panel(self) -> QFrame:
         panel, lay = self._panel("MARKET FLOW")
+        panel.setMinimumHeight(250)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.flow_terminal = QTextEdit()
         self.flow_terminal.setReadOnly(True)
         self.flow_terminal.document().setMaximumBlockCount(80)
@@ -207,8 +220,20 @@ class DashboardWindow(QMainWindow):
         lay.addWidget(self.trade_flow_terminal)
         return panel
 
+    def _build_simulation_scroll_panel(self) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = self._build_simulation_panel()
+        inner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        scroll.setWidget(inner)
+        return scroll
+
     def _build_simulation_panel(self) -> QFrame:
         panel, lay = self._panel("SIMULATION CARDS")
+        panel.setMinimumHeight(300)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         cards = QGridLayout()
         cards.setHorizontalSpacing(8)
         cards.setVerticalSpacing(8)
@@ -217,33 +242,42 @@ class DashboardWindow(QMainWindow):
         for i, k in enumerate(card_order):
             lbl = self.sim_cards[k]
             box = QFrame(); box.setStyleSheet("QFrame{background:#0e1521;border:1px solid #2a3650;border-radius:8px;}")
+            box.setMinimumHeight(72)
+            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
             bl = QVBoxLayout(box)
             title = QLabel(k.replace("_", " ").upper())
             title.setWordWrap(True)
+            title.setStyleSheet("font-size:11px;color:#96a8d8;")
             bl.addWidget(title)
             lbl.setWordWrap(True)
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            lbl.setStyleSheet("font-size:16px;font-weight:700;")
+            lbl.setStyleSheet("font-size:14px;font-weight:700;")
             bl.addWidget(lbl)
-            cards.addWidget(box, i // 4, i % 4)
+            cards.addWidget(box, i // 2, i % 2)
         lay.addLayout(cards)
         lay.addWidget(self._build_active_trade_panel())
         lay.addWidget(self._build_futures_status_panel())
+        lay.addStretch(1)
         return panel
 
     def _build_active_trade_panel(self) -> QFrame:
         panel, lay = self._panel("ACTIVE TRADE")
+        panel.setMinimumHeight(150)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.active_trade_summary = QLabel("FLAT BTCUSDT")
         self.active_trade_details = QLabel("Entry - | PnL - | Hold 0.0s")
         self.tp_progress_label = QLabel("TP progress 0%")
         self.sl_progress_label = QLabel("SL progress 0%")
         for w in [self.active_trade_summary, self.active_trade_details, self.tp_progress_label, self.sl_progress_label]:
             w.setWordWrap(True)
+            w.setStyleSheet("font-size:12px;")
             lay.addWidget(w)
         return panel
 
     def _build_futures_status_panel(self) -> QFrame:
         panel, lay = self._panel("FUTURES STATUS")
+        panel.setMinimumHeight(145)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.futures_status = {
             "mode": QLabel("Mode: REALISTIC PAPER"),
             "leverage": QLabel("Leverage: 1x"),
@@ -253,6 +287,7 @@ class DashboardWindow(QMainWindow):
         }
         for lbl in self.futures_status.values():
             lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size:12px;")
             lay.addWidget(lbl)
         return panel
 
