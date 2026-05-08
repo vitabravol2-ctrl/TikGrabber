@@ -53,6 +53,13 @@ class FuturesRiskControls:
                 return False, "EDGE_UNSTABLE"
             if snap.expected_move_ticks < (snap.min_profitable_ticks + self.safety_buffer_ticks):
                 return False, "MOVE_TOO_SMALL"
+            if snap.expected_move_usdt > 0 or snap.net_expected_profit_after_costs != 0:
+                if snap.net_expected_profit_after_costs <= 0:
+                    return False, "NO_REAL_PROFIT"
+                if snap.expected_move_usdt < snap.minimum_real_move_usdt:
+                    return False, "NO_REAL_PROFIT"
+            if snap.late_entry_risk == "HIGH" or snap.late_move_penalty > 0.55:
+                return False, "LATE_ENTRY_RISK_HIGH"
             if snap.net_edge_score < 25:
                 return False, "EDGE_TOO_LOW"
             if snap.best_direction in {"LONG", "SHORT"}:

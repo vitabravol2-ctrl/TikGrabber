@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.engine import GameTheoryEngine
 from core.models import FuturesPositionModel, MarketSnapshot
+from core.futures_costs import FuturesCostModel
 from decision_engine import SignalDecisionEngine
 from replay import ReplayEngine, ReplayEventStore
 from risk.controls import FuturesRiskControls
@@ -43,6 +44,7 @@ class AppController:
         self.risk = FuturesRiskControls()
         self.position = FuturesPositionModel()
         self.blocked_reasons = Counter()
+        self.cost_model = FuturesCostModel()
         self._setup_arm_direction = "NONE"
         self._setup_arm_regime_family = "NONE"
         self._setup_arm_ticks = 0
@@ -77,6 +79,14 @@ class AppController:
         self.snapshot.block_reason = ", ".join(blockers) if blockers else "NONE"
         self.snapshot.trigger_strength = decision.trigger_strength
         self.snapshot.best_direction = "LONG" if self.snapshot.long_probability >= self.snapshot.short_probability else "SHORT"
+
+        expected_move_abs = max(self.snapshot.spread * 2.0, abs(self.snapshot.edge_score) * 0.06)
+        direction_sign = 1.0 if self.snapshot.best_direction == "LONG" else -1.0
+        self.snapshot.expected_move_usdt = (expected_move_abs / max(self.snapshot.price, 1e-9)) * self.sim.scalp.order_notional_usdt
+        self.snapshot.expected_move_bps = (expected_move_abs / max(self.snapshot.price, 1e-9)) * 10000.0
+        net_profit, _ = self.cost_model.net_profit_usdt(self.sim.scalp.order_notional_usdt, self.snapshot.expected_move_bps)
+        self.snapshot.net_expected_profit_after_costs = net_profit * direction_sign if direction_sign > 0 else net_profit
+        self.snapshot.minimum_real_move_usdt = self.cost_model.minimum_real_move_usdt
 
         signal_id = self.validator.register_signal(self.snapshot, signal) if signal.value != "NONE" else None
         candidate_direction = signal.value if signal.value != "NONE" else "NONE"
@@ -172,7 +182,7 @@ class AppController:
         edge = self.snapshot.edge_score
         block = self.snapshot.block_reason
         bucket = round(edge / 10) * 10
-        market_flow = f"REGIME -> {state} | QUALITY -> {self.snapshot.signal_quality} | EDGE BUCKET -> {bucket:+d} | NOISE -> {self.snapshot.noise_level} | BLOCK {block}"
+        market_flow = f"PHASE -> {self.snapshot.market_phase} | REGIME -> {state} | EXHAUST {self.snapshot.exhaustion_score:.0f} | TRAP {self.snapshot.trap_score:.0f} | REV {self.snapshot.reversal_probability:.0f}% | BLOCK {block}"
         if market_flow != self._last_market_flow:
             self.log.info(market_flow)
             self._last_market_flow = market_flow
