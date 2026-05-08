@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.models import MarketSnapshot, SimulationState
+from telemetry.event_guard import EventGuard
 
 
 class EdgeGauge(QWidget):
@@ -70,7 +71,7 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.7.1")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v1.0.1")
         self.resize(1600, 900)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
@@ -112,6 +113,7 @@ class DashboardWindow(QMainWindow):
 
         main.addWidget(main_split, 1)
 
+        self._event_guard = EventGuard()
         self.setCentralWidget(root)
 
     def _panel(self, title: str) -> tuple[QFrame, QVBoxLayout]:
@@ -337,21 +339,22 @@ class DashboardWindow(QMainWindow):
 
         self.sim_cards["trades"].setText(str(sim.trades))
         self.sim_cards["winrate"].setText(f"{sim.winrate:.1f}%")
-        self.sim_cards["net_pnl"].setText(f"{sim.net_pnl:+.2f}")
+        self.sim_cards["net_pnl"].setText(f"R {sim.realized_pnl:+.2f} | U {sim.unrealized_pnl:+.2f}")
         self.sim_cards["net_ticks"].setText(f"{sim.net_ticks:+.1f}")
         self.sim_cards["cooldown"].setText(f"{sim.cooldown_seconds_left:.1f}s" if sim.cooldown_active else "READY")
         self.sim_cards["active_trade"].setText(f"{sim.active_trade_side} @ {sim.entry:.2f}" if sim.active_trade_side != "-" else "-")
-        self.sim_cards["hold"].setText(f"{sim.hold_seconds:.1f}s")
+        hold_value = sim.hold_seconds if sim.virtual_position != "Flat" else sim.last_hold_seconds
+        self.sim_cards["hold"].setText(f"{hold_value:.1f}s")
         self.sim_cards["sig_per_h"].setText(f"acc {sim.signals_per_hour:.1f} | trd {sim.trades_per_hour:.1f}")
 
         if sim.virtual_position != "Flat":
             self.active_trade_summary.setText(f"ACTIVE: {sim.active_trade_side} BTCUSDT")
-            self.active_trade_details.setText(f"Entry {sim.entry:.2f} | Mark {snap.price:.2f} | Unrealized {sim.pnl_ticks:+.1f} ticks | Hold {sim.hold_seconds:.1f}s")
+            self.active_trade_details.setText(f"Side {sim.active_trade_side} | Qty {sim.quantity:.6f} | Entry {sim.entry:.2f} | U-PnL {sim.unrealized_pnl:+.2f} | Hold {sim.hold_seconds:.1f}s | ExecQ {sim.execution_quality:.1f}")
             self.tp_progress_label.setText(f"TP progress {sim.tp_progress:.0f}%")
             self.sl_progress_label.setText(f"SL progress {sim.sl_progress:.0f}%")
         else:
             self.active_trade_summary.setText("FLAT")
-            self.active_trade_details.setText(f"Last {sim.last_closed_side} {sim.last_close_reason} | Entry {sim.last_entry_price:.2f} -> Exit {sim.last_exit_price:.2f} | Net {sim.last_net_pnl:+.2f}")
+            self.active_trade_details.setText(f"Last side {sim.last_closed_side} | Last PnL {sim.last_trade_pnl:+.2f} | Last hold {sim.last_hold_seconds:.1f}s | Exit {sim.last_close_reason}")
             self.tp_progress_label.setText(f"Cooldown {sim.cooldown_seconds_left:.1f}s" if sim.cooldown_active else "Ready")
             self.sl_progress_label.setText("Waiting setup")
 
@@ -378,8 +381,10 @@ class DashboardWindow(QMainWindow):
         market_flow_line = f"STATE {snap.market_intent[:12]} | EDGE {snap.edge_score:+.0f} | BLOCK {block[:14]} | SIGNAL {sim.last_signal} | STR {snap.trigger_strength:.1f}"
         last_exit_text = f"{sim.last_exit_price:.2f}" if sim.last_exit_price else "-"
         trade_flow_line = f"EVENT {sim.last_event} | POS {sim.virtual_position} | E {entry_text} | LX {last_exit_text} | NET {sim.last_net_pnl:+.2f} | FEES {sim.fees_paid:.2f} | HOLD {sim.hold_seconds:.1f}s"
-        self.flow_terminal.append(market_flow_line)
-        self.trade_flow_terminal.append(trade_flow_line)
+        if self._event_guard.should_emit("market_flow", market_flow_line):
+            self.flow_terminal.append(market_flow_line)
+        if self._event_guard.should_emit("trade_flow", f"{sim.last_event}:{sim.virtual_position}"):
+            self.trade_flow_terminal.append(trade_flow_line)
 
         self.futures_status["mode"].setText("Mode: REALISTIC PAPER")
         self.futures_status["leverage"].setText("Leverage: 1x")

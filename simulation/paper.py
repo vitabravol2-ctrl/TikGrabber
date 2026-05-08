@@ -19,6 +19,8 @@ class PaperSimulator:
         min_hold_ms: int = 700,
         anti_spam_edge_delta: float = 1.0,
         on_trade_closed=None,
+        default_notional_usdt: float = 100.0,
+        leverage: float = 1.0,
     ) -> None:
         self.state = SimulationState()
         self.tick_size = tick_size
@@ -29,10 +31,14 @@ class PaperSimulator:
         self.min_hold_seconds = min_hold_ms / 1000.0
         self.anti_spam_edge_delta = anti_spam_edge_delta
         self.execution = ExecutionModel(tick_size=tick_size)
+        self.default_notional_usdt = default_notional_usdt
+        self.leverage = max(1e-6, leverage)
 
         self._entry_ts = 0.0
         self._entry_side = ""
         self._entry_fees = 0.0
+        self._entry_qty = 0.0
+        self._entry_notional = 0.0
         self._pnl_sum = 0.0
         self._hold_sum = 0.0
         self._current_signal_id: int | None = None
@@ -100,9 +106,15 @@ class PaperSimulator:
         self.state.virtual_position = direction
         self.state.active_trade_side = direction
         self.state.entry = fill.price
+        self._entry_qty = self.default_notional_usdt / max(fill.price, 1e-9)
+        self._entry_notional = abs(self._entry_qty * fill.price)
+        self.state.quantity = self._entry_qty
+        self.state.notional = self._entry_notional
+        self.state.leverage = self.leverage
+        self.state.margin_used = self._entry_notional / self.leverage
         self._entry_ts = now
         self._entry_side = direction
-        self._entry_fees = fill.fee_paid
+        self._entry_fees = self._entry_notional * self.execution.fee_rate
         self.state.trades += 1
         self.state.queue_delay_ms = fill.queue_delay_ms
         if fill.partial:
@@ -125,6 +137,7 @@ class PaperSimulator:
     def _update_open_trade(self, snap: MarketSnapshot, now: float) -> None:
         direction = 1 if self.state.virtual_position == "Long" else -1
         self.state.pnl_ticks = (snap.price - self.state.entry) / self.tick_size * direction
+        self.state.unrealized_pnl = (snap.price - self.state.entry) * direction * self._entry_qty
         self.state.hold_seconds = now - self._entry_ts
         self.state.tp_progress = min(100.0, max(0.0, self.state.pnl_ticks / self.tp_ticks * 100.0))
         self.state.sl_progress = min(100.0, max(0.0, -self.state.pnl_ticks / self.sl_ticks * 100.0))
@@ -145,8 +158,9 @@ class PaperSimulator:
             return
 
         direction = 1 if self._entry_side == "Long" else -1
-        gross_pnl = (exit_fill.price - self.state.entry) * direction
-        fees = self._entry_fees + exit_fill.fee_paid
+        gross_pnl = (exit_fill.price - self.state.entry) * direction * self._entry_qty
+        exit_notional = abs(self._entry_qty * exit_fill.price)
+        fees = self._entry_fees + (exit_notional * self.execution.fee_rate)
         net_pnl = gross_pnl - fees
         net_ticks = net_pnl / self.tick_size
         won = net_pnl > 0
@@ -164,6 +178,8 @@ class PaperSimulator:
         self.state.last_closed_side = self._entry_side
         self.state.last_close_reason = reason
         self.state.last_net_pnl = net_pnl
+        self.state.last_trade_pnl = net_pnl
+        self.state.realized_pnl += net_pnl
         self.state.last_net_ticks = net_ticks
         self.state.wins += 1 if won else 0
         self.state.losses += 0 if won else 1
@@ -189,11 +205,16 @@ class PaperSimulator:
             self._strength_wins[bucket] += 1
         self.state.winrate_by_strength = {k: (self._strength_wins[k] / v * 100.0) for k, v in self._strength_total.items() if v}
 
+        self.state.last_hold_seconds = hold
         self.state.virtual_position = "Flat"
         self.state.active_trade_side = "-"
+        self.state.quantity = 0.0
+        self.state.notional = 0.0
+        self.state.margin_used = 0.0
         self.state.entry = 0.0
         self.state.pnl_ticks = 0.0
         self.state.hold_seconds = 0.0
+        self.state.unrealized_pnl = 0.0
         self.state.tp_progress = 0.0
         self.state.sl_progress = 0.0
         self._last_close_ts = now
