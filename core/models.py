@@ -46,12 +46,18 @@ class SignalAnalyticsState:
 
 @dataclass
 class SimulationState:
-    mode: str = "LIVE PAPER MODE"
+    mode: str = "REALISTIC PAPER"
     last_signal: str = "NONE"
     virtual_position: str = "Flat"
     entry: float = 0.0
     exit_price: float = 0.0
     pnl_ticks: float = 0.0
+    gross_pnl: float = 0.0
+    fees_paid: float = 0.0
+    net_pnl: float = 0.0
+    net_ticks: float = 0.0
+    cooldown_seconds_left: float = 0.0
+    cooldown_active: bool = False
     last_trade_result: str = "-"
     hold_seconds: float = 0.0
     trades: int = 0
