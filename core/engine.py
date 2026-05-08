@@ -28,7 +28,8 @@ class DataQualityGate:
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if not depth_ready:
-            return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_DEPTH", "book_status": "OK", "depth_status": "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
+            reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < self.depth_stale_ms else "MISSING_DEPTH"
+            return {"data_quality": "BookMissing", "data_quality_reason": reason, "book_status": "OK", "depth_status": "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if book_age_ms >= self.book_stale_ms:
             return {"data_quality": "Stale", "data_quality_reason": "STALE_BOOK", "book_status": "Stale", "depth_status": "OK", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if depth_age_ms >= self.depth_stale_ms:

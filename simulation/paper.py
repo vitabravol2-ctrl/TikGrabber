@@ -77,14 +77,21 @@ class PaperSimulator:
         self.state.cooldown_active = cooldown_left > 0
 
         if self.state.virtual_position == "Flat" and signal != TradeSignal.NO_SIGNAL:
+            self.state.lifecycle_state = "SETUP_CANDIDATE"
             self._try_open_trade(snap, signal, now, signal_id)
         elif self.state.virtual_position != "Flat":
+            self.state.lifecycle_state = "ACTIVE_POSITION"
             self._update_open_trade(snap, now)
+        elif self.state.cooldown_active:
+            self.state.lifecycle_state = "COOLDOWN"
+        else:
+            self.state.lifecycle_state = "FLAT"
         return self.state
 
     def _try_open_trade(self, snap: MarketSnapshot, signal: TradeSignal, now: float, signal_id: int | None) -> None:
         if self.state.cooldown_active:
             self.state.last_event = "COOLDOWN_BLOCK"
+            self.state.lifecycle_state = "COOLDOWN"
             return
         if signal_id is not None and signal_id in self._used_signal_ids:
             return
@@ -102,7 +109,8 @@ class PaperSimulator:
         fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
         if fill is None or fill.price <= 0 or fill.missed:
             self.state.missed_fills += 1
-            self.state.last_event = "MISS_ENTRY"
+            self.state.last_event = "ENTRY MISSED"
+            self.state.lifecycle_state = "ENTRY_PENDING"
             return
 
         self.state.virtual_position = direction
@@ -121,7 +129,11 @@ class PaperSimulator:
         self.state.queue_delay_ms = fill.queue_delay_ms
         if fill.partial:
             self.state.partial_fills += 1
-        self.state.last_event = "ENTRY"
+            self.state.lifecycle_state = "PARTIAL_ENTRY"
+            self.state.last_event = f"PARTIAL FILL {max(1,int(100.0 * 0.5))}%"
+        else:
+            self.state.last_event = f"{direction.upper()} OPENED {self.default_notional_usdt:.0f} USDT"
+            self.state.lifecycle_state = "ACTIVE_POSITION"
         self.state.accepted_signal_id = signal_id
         self.state.signals_count += 1
         self._signal_strength_sum += snap.trigger_strength
@@ -147,7 +159,7 @@ class PaperSimulator:
         force_close = self.state.pnl_ticks <= -self.sl_ticks
         can_close = self.state.hold_seconds >= self.min_hold_seconds
         min_tp_ticks = max(float(self.tp_ticks), float(self.break_even.min_profitable_ticks()))
-        if self.state.pnl_ticks >= min_tp_ticks and can_close:
+        if self.state.pnl_ticks >= min_tp_ticks and can_close and self.state.unrealized_pnl > (self._entry_fees * 2.0):
             self._close_trade(snap, "TP", now)
         elif force_close:
             self._close_trade(snap, "SL", now)
@@ -176,6 +188,7 @@ class PaperSimulator:
         self.state.net_ticks = net_ticks
         self.state.last_trade_result = f"{self._entry_side} {reason} gross {gross_pnl:+.2f} net {net_pnl:+.2f} ({net_ticks:+.1f} ticks)"
         self.state.last_event = reason
+        self.state.lifecycle_state = "EXITING"
         self.state.last_entry_price = self.state.entry
         self.state.last_exit_price = exit_fill.price
         self.state.last_closed_side = self._entry_side
@@ -221,6 +234,7 @@ class PaperSimulator:
         self.state.tp_progress = 0.0
         self.state.sl_progress = 0.0
         self._last_close_ts = now
+        self.state.lifecycle_state = "COOLDOWN"
         if self._on_trade_closed:
             self._on_trade_closed(self._current_signal_id, reason, net_pnl)
         self._current_signal_id = None

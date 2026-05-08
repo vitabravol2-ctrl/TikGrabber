@@ -173,7 +173,7 @@ class DashboardWindow(QMainWindow):
         panel, lay = self._panel("ENGINE STATUS")
         grid = QGridLayout(); grid.setSpacing(4)
         self.engine_lamps = {}
-        for i, key in enumerate(["WS", "BOOK", "DEPTH", "DATA", "RISK", "PAPER"]):
+        for i, key in enumerate(["WS", "BOOK", "DEPTH", "DATA", "RISK", "PAPER", "LIFECYCLE"]):
             lbl = QLabel(key + " ●")
             lbl.setAlignment(Qt.AlignCenter)
             self._set_status_lamp(lbl, "gray")
@@ -254,7 +254,7 @@ class DashboardWindow(QMainWindow):
         self.block_label.setStyleSheet("color:#ff6b6b;font-weight:700;" if block != "NONE" else "color:#7f92b8;")
 
         active = sim.virtual_position != "Flat"
-        self.position_status.setText(f"STATUS: {'ACTIVE ' + sim.active_trade_side if active else 'WAITING SETUP'}")
+        self.position_status.setText(f"STATUS: {sim.lifecycle_state} | {'ACTIVE ' + sim.active_trade_side if active else 'WAITING SETUP'}")
         best_dir = "LONG" if snap.long_probability >= snap.short_probability else "SHORT"
         edge_pack = f"{snap.edge_score:+.1f} / {snap.smoothed_edge_score:+.1f} / {snap.net_edge_score:+.1f}"
         hold = sim.hold_seconds if active else sim.last_hold_seconds
@@ -304,6 +304,8 @@ class DashboardWindow(QMainWindow):
         self._set_status_lamp(self.engine_lamps["DATA"], data_level)
         self._set_status_lamp(self.engine_lamps["RISK"], risk_level)
         self._set_status_lamp(self.engine_lamps["PAPER"], "green")
+        lifecycle_level = "green" if sim.lifecycle_state in {"ACTIVE_POSITION", "PARTIAL_ENTRY"} else ("yellow" if sim.lifecycle_state in {"SETUP_CANDIDATE", "ENTRY_PENDING", "COOLDOWN", "EXITING"} else "gray")
+        self._set_status_lamp(self.engine_lamps["LIFECYCLE"], lifecycle_level)
         self.engine_block.setText(f"BLOCK: {block if block != 'NONE' else snap.data_quality_reason.upper()}")
         self.engine_volume.setText(f"VOL24: {snap.volume_24h:,.0f} | BOOK AGE {snap.book_age_ms:.0f} ms | DEPTH AGE {snap.depth_age_ms:.0f} ms")
         self.engine_metrics.setText(

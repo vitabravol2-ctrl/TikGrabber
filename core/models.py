@@ -125,6 +125,7 @@ class SimulationState:
     queue_delay_ms: float = 0.0
     partial_fills: int = 0
     missed_fills: int = 0
+    lifecycle_state: str = "FLAT"
 
 
 @dataclass
