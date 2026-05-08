@@ -51,6 +51,7 @@ class MarketSnapshot:
     no_trade_zone: bool = True
     best_direction: str = "FLAT"
     ws_streams_seen: list[str] = field(default_factory=list)
+    price_source: str = "BOOKTICKER"
 
 
 @dataclass
@@ -191,6 +192,7 @@ class SimulationState:
     orders_canceled: int = 0
     orders_expired: int = 0
     orders_rejected: int = 0
+    scalp_summary: str = ""
 
 
 @dataclass

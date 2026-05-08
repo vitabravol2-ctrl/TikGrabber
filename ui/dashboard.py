@@ -149,6 +149,9 @@ class DashboardWindow(QMainWindow):
         self.position_status.setWordWrap(True)
         lay.addWidget(self.position_status)
         self.position_rows = {}
+        self.scalp_strip = QLabel("PROFILE - | BUDGET - | ORDER - | LEV - | TP - | SL - | TIMEOUT - | COOLDOWN - | MAX LOSS -")
+        self.scalp_strip.setStyleSheet("font-size:11px;color:#9bc1ff;padding:3px 4px;background:#131f34;border:1px solid #2a4068;border-radius:6px;")
+        lay.addWidget(self.scalp_strip)
         keys = ["BEST DIRECTION", "EDGE PACK", "TRIGGER", "EXPECTED MOVE", "BLOCK REASON", "SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
         for key in keys:
             lbl = QLabel(f"{key}: -")
@@ -183,11 +186,17 @@ class DashboardWindow(QMainWindow):
         lay.addLayout(grid)
         self.engine_block = QLabel("BLOCK: -")
         self.engine_block.setStyleSheet("font-size:11px;")
+        self.engine_price_src = QLabel("PRICE SRC: -")
+        self.engine_price_src.setStyleSheet("font-size:10px;color:#7f92b8;")
+        self.engine_book_state = QLabel("BOOK: -")
+        self.engine_book_state.setStyleSheet("font-size:10px;color:#7f92b8;")
         self.engine_volume = QLabel("VOL24: -")
         self.engine_volume.setStyleSheet("font-size:10px;color:#7f92b8;")
         self.engine_metrics = QLabel("EVT 0 | OPEN 0 | CLOSED 0 | WR 0%")
         self.engine_metrics.setStyleSheet("font-size:12px;font-weight:700;color:#b7cff7;")
         lay.addWidget(self.engine_block)
+        lay.addWidget(self.engine_price_src)
+        lay.addWidget(self.engine_book_state)
         lay.addWidget(self.engine_volume)
         lay.addWidget(self.engine_metrics)
         lay.addStretch(1)
@@ -289,7 +298,7 @@ class DashboardWindow(QMainWindow):
         dedup_key = f"{snap.market_regime}:{snap.signal_quality}:{edge_bucket}:{snap.noise_level}:{block}:{sim.lifecycle_state}"
         if self._event_guard.should_emit("market_flow", dedup_key):
             self.flow_terminal.append(market_flow_line)
-        if self._event_guard.should_emit("trade_flow_waiting", f"{block}:{best_dir}:{sim.trades}") and self._last_trade_event_idx == 0:
+        if self._event_guard.should_emit("trade_flow_waiting", f"{block}:{best_dir}:{snap.signal_quality}"):
             self.trade_flow_terminal.append(trade_flow_line)
         new_events = sim.trade_events[self._last_trade_event_idx :]
         for event in new_events:
@@ -311,6 +320,10 @@ class DashboardWindow(QMainWindow):
         lifecycle_level = "green" if sim.lifecycle_state in {"ACTIVE_POSITION", "PARTIAL_ENTRY"} else ("yellow" if sim.lifecycle_state in {"SETUP_CANDIDATE", "ENTRY_PENDING", "COOLDOWN", "EXITING"} else "gray")
         self._set_status_lamp(self.engine_lamps["LIFECYCLE"], lifecycle_level)
         self.engine_block.setText(f"BLOCK: {block if block != 'NONE' else snap.data_quality_reason.upper()}")
+        self.engine_price_src.setText(f"PRICE SRC: {snap.price_source}")
+        book_view = "FALLBACK" if snap.book_status == "OK_FALLBACK" else snap.book_status
+        self.engine_book_state.setText(f"BOOK: {book_view}")
+        self.scalp_strip.setText(sim.scalp_summary or "PROFILE -")
         streams = ",".join(snap.ws_streams_seen) if snap.ws_streams_seen else "-"
         self.engine_volume.setText(f"VOL24: {snap.volume_24h:,.0f} | BOOK AGE {snap.book_age_ms:.0f} ms | DEPTH AGE {snap.depth_age_ms:.0f} ms | STREAMS {streams}")
         self.engine_metrics.setText(

@@ -67,6 +67,15 @@ class PaperSimulator:
         self.state.max_session_loss = self.scalp.session_max_loss_usdt
         self.state.max_trades_session = self.scalp.max_trades_per_session
 
+    def _profile_allows_quality(self, quality: str) -> bool:
+        if quality == "A":
+            return True
+        if quality == "B":
+            return self.scalp.allow_quality_b
+        if quality == "C":
+            return self.scalp.allow_quality_c
+        return False
+
     def _can_take_signal(self, snap: MarketSnapshot) -> tuple[bool, str]:
         if self.state.realized_pnl <= -self.scalp.session_max_loss_usdt:
             return False, "SESSION_LOSS_LIMIT"
@@ -78,6 +87,14 @@ class PaperSimulator:
             return False, "BAD_NOTIONAL"
         if self.scalp.leverage > self.scalp.max_allowed_leverage:
             return False, "BAD_LEVERAGE"
+        strict_profile = any([
+            snap.signal_quality != "D",
+            snap.noise_level != "HIGH",
+            abs(snap.smoothed_edge_score) > 0,
+            snap.expected_move_ticks > 0,
+        ])
+        if strict_profile and not self._profile_allows_quality(snap.signal_quality):
+            return False, "QUALITY_FILTER"
         if snap.spread <= 0:
             return False, "NO_SPREAD"
         if snap.spread > max(self.scalp.max_spread_ticks, 2.0):
@@ -98,6 +115,7 @@ class PaperSimulator:
         elif self.state.virtual_position != "Flat":
             self._update_position(snap, now)
         self.state.signals_per_hour = self.state.signals_accepted / max(1e-6, (now - self._started_at) / 3600.0)
+        self.state.scalp_summary = f"PROFILE {self.scalp.profile.replace('_SCALP', '')} | BUDGET {self.scalp.budget_usdt:.0f} | ORDER {self.scalp.order_notional_usdt:.0f} | LEV {self.scalp.leverage:.0f}x | TP {self.scalp.tp_ticks:.0f}t | SL {self.scalp.sl_ticks:.0f}t | TIMEOUT {self.scalp.timeout_seconds:.0f}s | COOLDOWN {self.scalp.cooldown_seconds:.0f}s | MAX LOSS {self.scalp.session_max_loss_usdt:.0f}"
         return self.state
 
     def _open_position(self, snap: MarketSnapshot, signal: TradeSignal, now: float) -> None:
