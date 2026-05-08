@@ -128,6 +128,8 @@ class SimulationState:
     partial_fills: int = 0
     missed_fills: int = 0
     lifecycle_state: str = "FLAT"
+    trade_events: list[str] = field(default_factory=list)
+    close_latched: bool = False
 
 
 @dataclass
