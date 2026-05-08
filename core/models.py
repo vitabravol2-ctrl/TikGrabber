@@ -43,6 +43,12 @@ class MarketSnapshot:
     book_status: str = "Missing"
     depth_status: str = "Missing"
     can_trade_data: bool = False
+    smoothed_edge_score: float = 0.0
+    market_regime: str = "BALANCED"
+    signal_quality: str = "D"
+    edge_stability: str = "UNSTABLE"
+    noise_level: str = "HIGH"
+    no_trade_zone: bool = True
 
 
 @dataclass
