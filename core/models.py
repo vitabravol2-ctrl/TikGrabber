@@ -83,6 +83,8 @@ class SimulationState:
     hold_seconds: float = 0.0
     last_hold_seconds: float = 0.0
     trades: int = 0
+    opened_trades: int = 0
+    closed_trades: int = 0
     wins: int = 0
     losses: int = 0
     winrate: float = 0.0

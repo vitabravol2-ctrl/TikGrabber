@@ -16,7 +16,8 @@ class DataQualityGate:
     def evaluate(self, event: dict, tick_speed: float) -> dict:
         if bool(event.get("legacy_replay", False)):
             return {"data_quality": "Legacy", "data_quality_reason": "LEGACY_REPLAY", "book_status": "Missing", "depth_status": "Missing", "book_age_ms": float(event.get("book_age_ms", 0.0) or 0.0), "depth_age_ms": float(event.get("depth_age_ms", 0.0) or 0.0), "can_trade_data": True}
-        book_age_ms = float(event.get("book_age_ms", 1e9) or 1e9)
+        raw_book_age = float(event.get("book_age_ms", -1.0) or -1.0)
+        book_age_ms = raw_book_age if raw_book_age >= 0 else -1.0
         depth_age_ms = float(event.get("depth_age_ms", 1e9) or 1e9)
         bid = float(event.get("bid", 0.0))
         ask = float(event.get("ask", 0.0))
@@ -27,6 +28,8 @@ class DataQualityGate:
         depth_ready = bool(depth_ready_flag) if depth_ready_flag is not None else (depth_age_ms < self.depth_stale_ms or (bid_vol > 0 and ask_vol > 0))
         if not book_ready:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
+        if book_age_ms < 0:
+            return {"data_quality": "BookMissing", "data_quality_reason": "UNKNOWN_BOOK", "book_status": "Unknown", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if not depth_ready:
             reason = "DEPTH_EMPTY_BOOK" if depth_age_ms < self.depth_stale_ms else "MISSING_DEPTH"
             return {"data_quality": "BookMissing", "data_quality_reason": reason, "book_status": "OK", "depth_status": "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}

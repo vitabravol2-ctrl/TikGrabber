@@ -54,11 +54,14 @@ class BinanceFeedWorker(QObject):
         stream = data.get("stream", "")
 
         if "bookTicker" in stream:
-            self._book.bid = float(payload.get("b", 0.0))
-            self._book.ask = float(payload.get("a", 0.0))
-            self._book.bid_qty = float(payload.get("B", 0.0))
-            self._book.ask_qty = float(payload.get("A", 0.0))
-            self._book.book_ticker_ts = now_ms
+            bid = float(payload.get("b", 0.0) or 0.0)
+            ask = float(payload.get("a", 0.0) or 0.0)
+            if bid > 0 and ask > 0:
+                self._book.bid = bid
+                self._book.ask = ask
+                self._book.bid_qty = float(payload.get("B", self._book.bid_qty) or self._book.bid_qty)
+                self._book.ask_qty = float(payload.get("A", self._book.ask_qty) or self._book.ask_qty)
+                self._book.book_ticker_ts = now_ms
         elif "depth20" in stream:
             bids = payload.get("bids") or payload.get("b") or []
             asks = payload.get("asks") or payload.get("a") or []
@@ -75,7 +78,7 @@ class BinanceFeedWorker(QObject):
             self._book.last_stream = stream
             if self._book.ws_streams_seen is not None:
                 self._book.ws_streams_seen.add("aggTrade")
-            book_age_ms = max(0.0, now_ms - self._book.book_ticker_ts) if self._book.book_ticker_ts else 1e9
+            book_age_ms = max(0.0, now_ms - self._book.book_ticker_ts) if self._book.book_ticker_ts else None
             depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else 1e9
             mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else 1e9
             book_ready = self._book.bid > 0 and self._book.ask > 0
@@ -84,7 +87,7 @@ class BinanceFeedWorker(QObject):
             if not book_ready:
                 book_status = "missing"
                 book_reason = "MISSING_BOOK_TICKER"
-            elif book_age_ms >= 2500.0:
+            elif (book_age_ms is not None) and book_age_ms >= 2500.0:
                 book_status = "stale"
                 book_reason = "STALE_BOOK"
             else:
@@ -114,7 +117,7 @@ class BinanceFeedWorker(QObject):
                     "ask_volume_total": self._book.ask_volume_total,
                     "imbalance": self._book.imbalance,
                     "mini_volume_24h": self._book.mini_volume_24h,
-                    "book_age_ms": book_age_ms,
+                    "book_age_ms": -1.0 if book_age_ms is None else book_age_ms,
                     "depth_age_ms": depth_age_ms,
                     "mini_age_ms": mini_age_ms,
                     "book_ready": book_ready,
