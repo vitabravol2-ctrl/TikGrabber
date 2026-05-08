@@ -12,6 +12,8 @@ from websocket import WebSocketApp
 class BookState:
     bid: float = 0.0
     ask: float = 0.0
+    bid_qty: float = 0.0
+    ask_qty: float = 0.0
     bid_volume_total: float = 0.0
     ask_volume_total: float = 0.0
     imbalance: float = 0.0
@@ -19,7 +21,9 @@ class BookState:
     book_ticker_ts: float = 0.0
     depth_ts: float = 0.0
     mini_ticker_ts: float = 0.0
-    last_event_ts: float = 0.0
+    last_agg_trade_ts: float = 0.0
+    ws_streams_seen: set[str] | None = None
+    last_stream: str = ""
 
 
 class BinanceFeedWorker(QObject):
@@ -30,6 +34,7 @@ class BinanceFeedWorker(QObject):
         super().__init__()
         self.symbol = symbol.lower()
         self._book = BookState()
+        self._book.ws_streams_seen = set()
         self._ws: WebSocketApp | None = None
 
     def start(self) -> None:
@@ -51,6 +56,8 @@ class BinanceFeedWorker(QObject):
         if "bookTicker" in stream:
             self._book.bid = float(payload.get("b", 0.0))
             self._book.ask = float(payload.get("a", 0.0))
+            self._book.bid_qty = float(payload.get("B", 0.0))
+            self._book.ask_qty = float(payload.get("A", 0.0))
             self._book.book_ticker_ts = now_ms
         elif "depth20" in stream:
             bids = payload.get("b", [])
@@ -64,9 +71,34 @@ class BinanceFeedWorker(QObject):
             self._book.mini_volume_24h = float(payload.get("v", 0.0))
             self._book.mini_ticker_ts = now_ms
         elif "aggTrade" in stream:
-            self._book.last_event_ts = now_ms
+            self._book.last_agg_trade_ts = now_ms
+            self._book.last_stream = stream
+            if self._book.ws_streams_seen is not None:
+                self._book.ws_streams_seen.add("aggTrade")
             book_age_ms = max(0.0, now_ms - self._book.book_ticker_ts) if self._book.book_ticker_ts else 1e9
             depth_age_ms = max(0.0, now_ms - self._book.depth_ts) if self._book.depth_ts else 1e9
+            mini_age_ms = max(0.0, now_ms - self._book.mini_ticker_ts) if self._book.mini_ticker_ts else 1e9
+            book_ready = self._book.bid > 0 and self._book.ask > 0
+            depth_ready = self._book.bid_volume_total > 0 and self._book.ask_volume_total > 0
+            mini_ready = self._book.mini_ticker_ts > 0
+            if not book_ready:
+                book_status = "missing"
+                book_reason = "MISSING_BOOK_TICKER"
+            elif book_age_ms >= 2500.0:
+                book_status = "stale"
+                book_reason = "STALE_BOOK"
+            else:
+                book_status = "ok"
+                book_reason = "GOOD"
+            if not depth_ready:
+                depth_status = "missing"
+                depth_reason = "MISSING_DEPTH"
+            elif depth_age_ms >= 2500.0:
+                depth_status = "stale"
+                depth_reason = "STALE_DEPTH"
+            else:
+                depth_status = "ok"
+                depth_reason = "GOOD"
             self.market_event.emit(
                 {
                     "type": "agg_trade",
@@ -76,16 +108,31 @@ class BinanceFeedWorker(QObject):
                     "event_time": int(payload.get("E", 0)),
                     "bid": self._book.bid,
                     "ask": self._book.ask,
+                    "bid_qty": self._book.bid_qty,
+                    "ask_qty": self._book.ask_qty,
                     "bid_volume_total": self._book.bid_volume_total,
                     "ask_volume_total": self._book.ask_volume_total,
                     "imbalance": self._book.imbalance,
                     "mini_volume_24h": self._book.mini_volume_24h,
                     "book_age_ms": book_age_ms,
                     "depth_age_ms": depth_age_ms,
-                    "book_ready": self._book.bid > 0 and self._book.ask > 0,
-                    "depth_ready": self._book.bid_volume_total > 0 and self._book.ask_volume_total > 0,
+                    "mini_age_ms": mini_age_ms,
+                    "book_ready": book_ready,
+                    "depth_ready": depth_ready,
+                    "mini_ready": mini_ready,
+                    "book_status": book_status,
+                    "depth_status": depth_status,
+                    "book_reason": book_reason,
+                    "depth_reason": depth_reason,
+                    "ws_streams_seen": sorted(list(self._book.ws_streams_seen or set())),
+                    "last_stream": self._book.last_stream,
                 }
             )
+        else:
+            self._book.last_stream = stream
+        if self._book.ws_streams_seen is not None:
+            stream_name = "bookTicker" if "bookTicker" in stream else "depth20" if "depth20" in stream else "miniTicker" if "miniTicker" in stream else "aggTrade" if "aggTrade" in stream else stream
+            self._book.ws_streams_seen.add(stream_name)
 
 
 class BinanceFeedThread(QThread):
