@@ -54,6 +54,32 @@ class MarketSnapshot:
 
 
 @dataclass
+class PaperScalpingConfig:
+    budget_usdt: float = 100.0
+    leverage: float = 1.0
+    order_notional_usdt: float = 100.0
+    tp_ticks: float = 2.0
+    sl_ticks: float = 2.0
+    timeout_seconds: float = 20.0
+    cooldown_seconds: float = 4.0
+    min_quality: str = "A"
+    allow_quality_b: bool = False
+    allow_quality_c: bool = False
+    min_expected_move_ticks: float = 3.0
+    min_profit_buffer_ticks: float = 1.0
+    min_net_edge_score: float = 25.0
+    max_spread_ticks: float = 2.0
+    max_slippage_ticks: float = 1.0
+    max_order_age_seconds: float = 3.0
+    daily_max_loss_usdt: float = 3.0
+    session_max_loss_usdt: float = 1.0
+    max_trades_per_session: int = 10
+    max_consecutive_losses: int = 3
+    max_allowed_leverage: float = 3.0
+    profile: str = "CONSERVATIVE_SCALP"
+
+
+@dataclass
 class PaperSimConfig:
     tp_ticks: int = 2
     sl_ticks: int = 2
@@ -153,6 +179,9 @@ class SimulationState:
     sequence_name: str = ""
     sequence_confidence: float = 0.0
     setup_explanation: str = ""
+    profile: str = "CONSERVATIVE_SCALP"
+    max_session_loss: float = 1.0
+    max_trades_session: int = 10
     signals_candidates: int = 0
     signals_accepted: int = 0
     signals_rejected: int = 0
