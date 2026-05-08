@@ -23,7 +23,7 @@ class FuturesRiskControls:
         cooldown_active: bool,
     ) -> tuple[bool, str]:
         if snap.data_quality != "Good":
-            return False, "DATA_QUALITY"
+            return False, snap.data_quality_reason or "DATA_QUALITY"
         if snap.spread <= 0 or snap.spread > self.max_spread:
             return False, "SPREAD"
         if abs(snap.velocity) > self.max_volatility:

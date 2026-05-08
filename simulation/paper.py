@@ -4,6 +4,7 @@ from collections import defaultdict
 from time import time
 
 from core.models import MarketSnapshot, SimulationState
+from execution.breakeven import BreakEvenModel
 from signal_engine import TradeSignal
 from simulation.execution_model import ExecutionModel
 
@@ -31,6 +32,7 @@ class PaperSimulator:
         self.min_hold_seconds = min_hold_ms / 1000.0
         self.anti_spam_edge_delta = anti_spam_edge_delta
         self.execution = ExecutionModel(tick_size=tick_size)
+        self.break_even = BreakEvenModel(tick_size=tick_size, fee_rate=self.execution.fee_rate)
         self.default_notional_usdt = default_notional_usdt
         self.leverage = max(1e-6, leverage)
 
@@ -144,7 +146,8 @@ class PaperSimulator:
 
         force_close = self.state.pnl_ticks <= -self.sl_ticks
         can_close = self.state.hold_seconds >= self.min_hold_seconds
-        if self.state.pnl_ticks >= self.tp_ticks and can_close:
+        min_tp_ticks = max(float(self.tp_ticks), float(self.break_even.min_profitable_ticks()))
+        if self.state.pnl_ticks >= min_tp_ticks and can_close:
             self._close_trade(snap, "TP", now)
         elif force_close:
             self._close_trade(snap, "SL", now)
