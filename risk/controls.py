@@ -22,6 +22,7 @@ class FuturesRiskControls:
         position: FuturesPositionModel,
         requested_leverage: float,
         cooldown_active: bool,
+        profile: str = "CONSERVATIVE_FUTURES",
     ) -> tuple[bool, str]:
         if snap.data_quality_reason not in {"GOOD", "WS_UNSTABLE", "WARMUP", "STALE", ""}:
             return False, snap.data_quality_reason
@@ -34,7 +35,7 @@ class FuturesRiskControls:
         block_reasons = {"MISSING_BOOK_TICKER", "MISSING_DEPTH", "STALE_BOOK", "STALE_DEPTH"}
         if snap.data_quality_reason in block_reasons:
             return False, snap.data_quality_reason
-        strict_quality_mode = any(
+        strict_quality_mode = profile != "REALISTIC_FUTURES_1000" and any(
             [
                 snap.signal_quality != "D",
                 snap.noise_level != "HIGH",
@@ -102,4 +103,19 @@ class FuturesRiskControls:
             return False, "LIQ_BUFFER"
         if snap.trigger_strength < self.min_signal_strength:
             return False, "WEAK_SIGNAL"
+        if profile == "REALISTIC_FUTURES_1000":
+            if snap.signal_quality not in {"A", "B"}:
+                return False, "QUALITY_FILTER"
+            if snap.signal_quality == "B" and snap.net_edge_score < 35:
+                return False, "QUALITY_FILTER"
+            if snap.noise_level not in {"LOW", "MID"}:
+                return False, "NOISE_FILTER"
+            if snap.opportunity_score < 60:
+                return False, "LOW_OPPORTUNITY"
+            if snap.expected_move_usdt_real < (snap.required_move_usdt * 1.2):
+                return False, "NO_REAL_PROFIT"
+            cont = sum([snap.buy_pressure > 0.55 or snap.sell_pressure > 0.55, snap.net_edge_score > 25, snap.impulse_probability > 50, snap.market_phase in {"TREND", "BREAKOUT"}, snap.trapped_liquidity_score > 45])
+            rev = sum([snap.trap_score > 45, snap.exhaustion_score > 60, snap.reclaim < 0.30, snap.reversal_probability > 60, abs(snap.velocity) < max(0.5, snap.spread * 0.5)])
+            if max(cont, rev) < 3:
+                return False, "SETUP_3_OF_5"
         return True, "PASS"

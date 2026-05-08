@@ -40,6 +40,7 @@ class PaperSimulator:
         "CONSERVATIVE_FUTURES": dict(min_quality="A", allow_quality_b=False, allow_quality_c=False, tp_ticks=2.0, sl_ticks=2.0, max_trades_per_session=10, order_notional_usdt=100.0, leverage=1.0, fee_mode="MAKER_TAKER", tp_mode="DYNAMIC_REQUIRED_MOVE", min_desired_profit_usdt=0.03, min_desired_profit_bps=3.0, slippage_buffer_bps=1.0, funding_buffer_bps=0.5, safety_profit_multiplier=1.3),
         "BALANCED_SCALP": dict(min_quality="A", allow_quality_b=True, allow_quality_c=False, tp_ticks=2.0, sl_ticks=3.0, max_trades_per_session=20),
         "TEST_FAST": dict(min_quality="A", allow_quality_b=True, allow_quality_c=True, tp_ticks=1.0, sl_ticks=2.0, max_trades_per_session=50),
+        "REALISTIC_FUTURES_1000": dict(min_quality="A", allow_quality_b=True, allow_quality_c=False, budget_usdt=1000.0, leverage=3.0, max_notional_usdt=3000.0, order_notional_usdt=1000.0, risk_per_trade_pct=0.35, max_loss_per_trade_usdt=3.5, daily_max_loss_pct=2.0, daily_max_loss_usdt=20.0, session_max_loss_usdt=20.0, max_trades_per_session=20, max_consecutive_losses=3, fee_mode="MAKER_TAKER", bnb_discount_enabled=True, tp_sl_mode="DYNAMIC_BY_OPPORTUNITY", tp_price_move_usdt=80.0, sl_price_move_usdt=45.0, min_desired_profit_usdt=0.6, min_desired_profit_bps=2.0),
     }
 
     def __init__(self, tick_size: float = 0.10, tp_ticks: int = 2, sl_ticks: int = 2, timeout_seconds: float = 20.0, cooldown_seconds: float = 4.0, min_hold_ms: int = 700, anti_spam_edge_delta: float = 1.0, on_trade_closed=None, default_notional_usdt: float = 100.0, leverage: float = 1.0) -> None:
@@ -80,6 +81,8 @@ class PaperSimulator:
         return False
 
     def _can_take_signal(self, snap: MarketSnapshot) -> tuple[bool, str]:
+        if self.state.realized_pnl <= -self.scalp.daily_max_loss_usdt:
+            return False, "DAILY_LOSS_LIMIT"
         if self.state.realized_pnl <= -self.scalp.session_max_loss_usdt:
             return False, "SESSION_LOSS_LIMIT"
         if self._consecutive_losses >= self.scalp.max_consecutive_losses:
@@ -121,6 +124,27 @@ class PaperSimulator:
         self.state.scalp_summary = f"PROFILE {self.scalp.profile} | ORDER {self.scalp.order_notional_usdt:.0f} | LEV {self.scalp.leverage:.0f}x | TP {self.scalp.tp_ticks:.1f}t | SL {self.scalp.sl_ticks:.1f}t | FEE {self.scalp.fee_mode}"
         return self.state
 
+
+    def calculate_position_size(self, entry_price: float, sl_move_usdt: float) -> tuple[float, float, float]:
+        sl = max(sl_move_usdt, 1e-9)
+        raw_notional = self.scalp.max_loss_per_trade_usdt * entry_price / sl
+        max_allowed = min(self.scalp.max_notional_usdt, self.scalp.budget_usdt * self.scalp.leverage)
+        notional = min(raw_notional, max_allowed)
+        qty = notional / max(entry_price, 1e-9)
+        risk = qty * sl
+        return round(notional, 6), round(qty, 8), round(risk, 6)
+
+    @staticmethod
+    def compute_tp_sl_prices(entry_price: float, side: str, tp_move_usdt: float, sl_move_usdt: float) -> tuple[float, float]:
+        if side == "Long":
+            return entry_price + tp_move_usdt, entry_price - sl_move_usdt
+        return entry_price - tp_move_usdt, entry_price + sl_move_usdt
+
+    @staticmethod
+    def enforce_rr(tp_move: float, sl_move: float) -> float:
+        rr = tp_move / max(sl_move, 1e-9)
+        return max(rr, 1.3)
+
     def _open_position(self, snap: MarketSnapshot, signal: TradeSignal, now: float) -> None:
         self.state.signals_candidates += 1
         if self.state.cooldown_active:
@@ -161,9 +185,30 @@ class PaperSimulator:
             self.scalp.tp_ticks = dyn_tp
             self.scalp.sl_ticks = dyn_sl
         self.state.last_entry_price = fill.price
-        self.state.notional = self.scalp.order_notional_usdt
-        self.state.leverage = self.scalp.leverage
-        self.state.quantity = self.scalp.order_notional_usdt / max(fill.price, 1e-9)
+        if self.scalp.profile == "REALISTIC_FUTURES_1000":
+            sl_move = self.scalp.sl_price_move_usdt
+            if self.scalp.tp_sl_mode == "DYNAMIC_BY_OPPORTUNITY":
+                if snap.opportunity_score >= 85:
+                    self.scalp.tp_price_move_usdt = 110.0
+                    self.scalp.sl_price_move_usdt = 55.0
+                elif snap.opportunity_score >= 70:
+                    self.scalp.tp_price_move_usdt = 80.0
+                    self.scalp.sl_price_move_usdt = 45.0
+                else:
+                    self.scalp.tp_price_move_usdt = 60.0
+                    self.scalp.sl_price_move_usdt = 40.0
+                sl_move = self.scalp.sl_price_move_usdt
+            notional, qty, _ = self.calculate_position_size(fill.price, sl_move)
+            self.state.notional = notional
+            self.state.leverage = self.scalp.leverage
+            self.state.quantity = qty
+            self.scalp.order_notional_usdt = notional
+            self.scalp.tp_ticks = self.scalp.tp_price_move_usdt
+            self.scalp.sl_ticks = self.scalp.sl_price_move_usdt
+        else:
+            self.state.notional = self.scalp.order_notional_usdt
+            self.state.leverage = self.scalp.leverage
+            self.state.quantity = self.scalp.order_notional_usdt / max(fill.price, 1e-9)
         self.state.margin_used = self.state.notional / max(self.state.leverage, 1e-9)
         self._entry_qty = self.state.quantity
         self._entry_side = direction

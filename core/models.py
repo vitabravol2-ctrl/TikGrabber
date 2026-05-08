@@ -143,6 +143,15 @@ class PaperScalpingConfig:
     max_consecutive_losses: int = 3
     max_allowed_leverage: float = 3.0
     profile: str = "CONSERVATIVE_FUTURES"
+    max_notional_usdt: float = 300.0
+    risk_per_trade_pct: float = 1.0
+    max_loss_per_trade_usdt: float = 1.0
+    daily_max_loss_pct: float = 3.0
+    daily_max_loss_usdt: float = 3.0
+    bnb_discount_enabled: bool = False
+    tp_price_move_usdt: float = 0.0
+    sl_price_move_usdt: float = 0.0
+    tp_sl_mode: str = "DYNAMIC_REQUIRED_MOVE"
 
 
 @dataclass
