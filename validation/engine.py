@@ -57,10 +57,15 @@ class SignalValidationEngine:
         if signal == TradeSignal.NO_SIGNAL:
             return None
         self._seq += 1
+        return self._seq
+
+    def register_accepted_signal(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None) -> None:
+        if signal == TradeSignal.NO_SIGNAL or signal_id is None:
+            return
         imbalance = snap.buy_pressure - snap.sell_pressure
         aggression = max(snap.buy_pressure, snap.sell_pressure)
         record = SignalRecord(
-            signal_id=self._seq,
+            signal_id=signal_id,
             timestamp=snap.timestamp or time(),
             signal=signal.value,
             edge_score=snap.edge_score,
@@ -76,7 +81,6 @@ class SignalValidationEngine:
         )
         self.signal_history.append(record)
         self._active_signals[record.signal_id] = record
-        return record.signal_id
 
     def resolve_signal(self, signal_id: int | None, reason: str, pnl_ticks: float) -> None:
         if signal_id is None:

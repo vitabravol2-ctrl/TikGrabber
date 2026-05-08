@@ -79,10 +79,19 @@ class SimulationState:
     sl_progress: float = 0.0
     last_event: str = "-"
     signals_count: int = 0
+    raw_signal_ticks_count: int = 0
     signals_per_hour: float = 0.0
+    raw_signal_ticks_per_hour: float = 0.0
     trades_per_hour: float = 0.0
     avg_signal_strength: float = 0.0
     winrate_by_strength: dict[str, float] = field(default_factory=dict)
+    last_entry_price: float = 0.0
+    last_exit_price: float = 0.0
+    last_closed_side: str = "-"
+    last_close_reason: str = "-"
+    last_net_pnl: float = 0.0
+    last_net_ticks: float = 0.0
+    accepted_signal_id: int | None = None
 
 
 @dataclass

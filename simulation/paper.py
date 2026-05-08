@@ -44,18 +44,20 @@ class PaperSimulator:
         self._strength_wins: dict[str, int] = defaultdict(int)
         self._last_close_ts = 0.0
         self._last_setup_key: tuple[str, str, int] | None = None
+        self._last_accepted_signature: tuple[str, int | None, tuple[str, str, int]] | None = None
 
     def step(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None = None) -> SimulationState:
         now = time()
         self.state.last_signal = signal.value
+        self.state.accepted_signal_id = None
         self.state.edge_history.append(snap.edge_score)
         self.state.edge_history = self.state.edge_history[-40:]
 
         if signal != TradeSignal.NO_SIGNAL:
-            self.state.signals_count += 1
-            self._signal_strength_sum += snap.trigger_strength
+            self.state.raw_signal_ticks_count += 1
 
         elapsed_h = max(1e-6, (now - self._started_at) / 3600.0)
+        self.state.raw_signal_ticks_per_hour = self.state.raw_signal_ticks_count / elapsed_h
         self.state.signals_per_hour = self.state.signals_count / elapsed_h
         self.state.trades_per_hour = self.state.trades / elapsed_h
         self.state.avg_signal_strength = self._signal_strength_sum / max(1, self.state.signals_count)
@@ -72,13 +74,19 @@ class PaperSimulator:
 
     def _try_open_trade(self, snap: MarketSnapshot, signal: TradeSignal, now: float, signal_id: int | None) -> None:
         if self.state.cooldown_active:
+            self.state.last_event = "COOLDOWN_BLOCK"
             return
         if signal_id is not None and signal_id in self._used_signal_ids:
             return
 
         direction = "Long" if signal == TradeSignal.LONG_SIGNAL else "Short"
         setup_key = (direction, snap.market_intent, round(snap.edge_score / self.anti_spam_edge_delta))
+        signature = (signal.value, signal_id, setup_key)
+        if signature == self._last_accepted_signature:
+            self.state.last_event = "DUPLICATE_BLOCK"
+            return
         if setup_key == self._last_setup_key:
+            self.state.last_event = "SETUP_BLOCK"
             return
 
         fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread)
@@ -93,8 +101,12 @@ class PaperSimulator:
         self._entry_fees = fill.fee_paid
         self.state.trades += 1
         self.state.last_event = "ENTRY"
+        self.state.accepted_signal_id = signal_id
+        self.state.signals_count += 1
+        self._signal_strength_sum += snap.trigger_strength
         self._current_signal_id = signal_id
         self._last_setup_key = setup_key
+        self._last_accepted_signature = signature
         if signal_id is not None:
             self._used_signal_ids.add(signal_id)
 
@@ -139,6 +151,12 @@ class PaperSimulator:
         self.state.net_ticks = net_ticks
         self.state.last_trade_result = f"{self._entry_side} {reason} gross {gross_pnl:+.2f} net {net_pnl:+.2f} ({net_ticks:+.1f} ticks)"
         self.state.last_event = reason
+        self.state.last_entry_price = self.state.entry
+        self.state.last_exit_price = exit_fill.price
+        self.state.last_closed_side = self._entry_side
+        self.state.last_close_reason = reason
+        self.state.last_net_pnl = net_pnl
+        self.state.last_net_ticks = net_ticks
         self.state.wins += 1 if won else 0
         self.state.losses += 0 if won else 1
         self.state.long_wins += 1 if won and self._entry_side == "Long" else 0
