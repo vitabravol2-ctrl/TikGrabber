@@ -83,3 +83,29 @@ class SimulationState:
     trades_per_hour: float = 0.0
     avg_signal_strength: float = 0.0
     winrate_by_strength: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class FuturesExecutionConfig:
+    mode: str = "REALISTIC PAPER"
+    leverage: float = 1.0
+    execution: str = "SIMULATED"
+    fees_enabled: bool = True
+    slippage_enabled: bool = True
+
+
+@dataclass
+class FuturesPositionModel:
+    symbol: str = "BTCUSDT"
+    side: str = "FLAT"
+    leverage: float = 1.0
+    margin_type: str = "ISOLATED"
+    entry_price: float = 0.0
+    mark_price: float = 0.0
+    quantity: float = 0.0
+    notional_value: float = 0.0
+    initial_margin: float = 0.0
+    maintenance_margin: float = 0.0
+    unrealized_pnl: float = 0.0
+    liquidation_price: float = 0.0
+    liquidation_distance_pct: float = 0.0
