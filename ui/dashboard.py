@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QProgressBar,
     QSplitter,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -68,20 +69,20 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.7")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v0.7.1")
         self.resize(1240, 760)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
-            "QFrame{border:1px solid #232b3d;border-radius:10px;background:#131a25;}"
+            "QFrame{border:1px solid #222d42;border-radius:10px;background:#131a25;}"
             "QProgressBar{border:none;background:#1b2231;height:16px;border-radius:8px;text-align:center;}"
             "QProgressBar::chunk{border-radius:8px;background:#4a8bff;}"
-            "QLabel.title{font-weight:700;color:#96a8d8;letter-spacing:0.5px;}"
+            "QLabel.title{font-weight:700;color:#96a8d8;letter-spacing:0.6px;font-size:12px;}"
         )
 
         root = QWidget()
         main = QVBoxLayout(root)
-        main.setSpacing(8)
-        main.setContentsMargins(8, 8, 8, 8)
+        main.setSpacing(10)
+        main.setContentsMargins(10, 10, 10, 10)
 
         main.addWidget(self._build_top_panel())
 
@@ -97,7 +98,7 @@ class DashboardWindow(QMainWindow):
         bottom_split.setChildrenCollapsible(False)
         bottom_split.addWidget(self._build_signal_flow_panel())
         bottom_split.addWidget(self._build_simulation_panel())
-        bottom_split.setSizes([720, 500])
+        bottom_split.setSizes([660, 560])
         main.addWidget(bottom_split, 1)
 
         self.setCentralWidget(root)
@@ -108,6 +109,7 @@ class DashboardWindow(QMainWindow):
         lay.setSpacing(6)
         t = QLabel(title)
         t.setProperty("class", "title")
+        t.setWordWrap(True)
         lay.addWidget(t)
         return frame, lay
 
@@ -147,6 +149,8 @@ class DashboardWindow(QMainWindow):
         p, pl = self._panel("PRICE / INTENT")
         self.intent_label = QLabel("INTENT: BALANCED")
         self.signal_status = QLabel("SIGNAL: WAIT")
+        self.intent_label.setWordWrap(True)
+        self.signal_status.setWordWrap(True)
         pl.addWidget(self.intent_label)
         pl.addWidget(self.signal_status)
         lay.addWidget(p)
@@ -157,7 +161,8 @@ class DashboardWindow(QMainWindow):
         for i, name in enumerate(["BUY_PRESSURE", "SWEEP_DOWN", "TRAP", "RECLAIM", "COMPRESSION"]):
             badge = QLabel(name)
             badge.setAlignment(Qt.AlignCenter)
-            badge.setStyleSheet("padding:4px 6px;border-radius:6px;background:#2a2f3d;color:#7f8aa7;")
+            badge.setWordWrap(True)
+            badge.setStyleSheet("padding:3px 6px;border-radius:6px;background:#2a2f3d;color:#7f8aa7;font-size:11px;")
             self.state_badges[name] = badge
             badge_grid.addWidget(badge, i // 2, i % 2)
         sl.addLayout(badge_grid)
@@ -178,6 +183,7 @@ class DashboardWindow(QMainWindow):
         self.quality_label.setAlignment(Qt.AlignCenter)
         self.quality_label.setStyleSheet("font-size:44px;font-weight:800;color:#ff6b6b;")
         self.validation_label = QLabel("Validation: warming up")
+        self.validation_label.setWordWrap(True)
         ql.addWidget(self.quality_label)
         ql.addWidget(self.validation_label)
         lay.addWidget(q)
@@ -189,28 +195,64 @@ class DashboardWindow(QMainWindow):
         self.flow_terminal.setReadOnly(True)
         self.flow_terminal.document().setMaximumBlockCount(80)
         self.flow_terminal.setStyleSheet("background:#0c1018;border:1px solid #1f2b3d;border-radius:8px;")
+        self.flow_terminal.setLineWrapMode(QTextEdit.WidgetWidth)
         lay.addWidget(self.flow_terminal)
         return panel
 
     def _build_simulation_panel(self) -> QFrame:
         panel, lay = self._panel("SIMULATION CARDS")
         cards = QGridLayout()
-        self.sim_cards = {k: QLabel("-") for k in ["mode", "trades", "winrate", "pnl_ticks", "gross_pnl", "fees", "net_pnl", "net_ticks", "cooldown", "active_trade", "hold", "tp_sl", "sig_per_h", "avg_strength", "last_trade"]}
-        for i, (k, lbl) in enumerate(self.sim_cards.items()):
+        cards.setHorizontalSpacing(8)
+        cards.setVerticalSpacing(8)
+        card_order = ["trades", "winrate", "net_pnl", "net_ticks", "active_trade", "hold", "cooldown", "sig_per_h"]
+        self.sim_cards = {k: QLabel("-") for k in card_order}
+        for i, k in enumerate(card_order):
+            lbl = self.sim_cards[k]
             box = QFrame(); box.setStyleSheet("QFrame{background:#0e1521;border:1px solid #2a3650;border-radius:8px;}")
             bl = QVBoxLayout(box)
-            bl.addWidget(QLabel(k.replace("_", " ").upper()))
-            lbl.setStyleSheet("font-size:18px;font-weight:700;")
+            title = QLabel(k.replace("_", " ").upper())
+            title.setWordWrap(True)
+            bl.addWidget(title)
+            lbl.setWordWrap(True)
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            lbl.setStyleSheet("font-size:16px;font-weight:700;")
             bl.addWidget(lbl)
-            cards.addWidget(box, i // 2, i % 2)
+            cards.addWidget(box, i // 4, i % 4)
         lay.addLayout(cards)
+        lay.addWidget(self._build_active_trade_panel())
+        lay.addWidget(self._build_futures_status_panel())
+        return panel
+
+    def _build_active_trade_panel(self) -> QFrame:
+        panel, lay = self._panel("ACTIVE TRADE")
+        self.active_trade_summary = QLabel("FLAT BTCUSDT")
+        self.active_trade_details = QLabel("Entry - | PnL - | Hold 0.0s")
+        self.tp_progress_label = QLabel("TP progress 0%")
+        self.sl_progress_label = QLabel("SL progress 0%")
+        for w in [self.active_trade_summary, self.active_trade_details, self.tp_progress_label, self.sl_progress_label]:
+            w.setWordWrap(True)
+            lay.addWidget(w)
+        return panel
+
+    def _build_futures_status_panel(self) -> QFrame:
+        panel, lay = self._panel("FUTURES STATUS")
+        self.futures_status = {
+            "mode": QLabel("Mode: REALISTIC PAPER"),
+            "leverage": QLabel("Leverage: 1x"),
+            "execution": QLabel("Execution: SIMULATED"),
+            "fees": QLabel("Fees: ON"),
+            "slippage": QLabel("Slippage: ON"),
+        }
+        for lbl in self.futures_status.values():
+            lbl.setWordWrap(True)
+            lay.addWidget(lbl)
         return panel
 
     def _set_badge_state(self, label: QLabel, active: bool) -> None:
         if active:
-            label.setStyleSheet("padding:4px 6px;border-radius:6px;background:#1ecb70;color:#02160a;font-weight:700;")
+            label.setStyleSheet("padding:3px 6px;border-radius:6px;background:#1ecb70;color:#02160a;font-weight:700;font-size:11px;")
         else:
-            label.setStyleSheet("padding:4px 6px;border-radius:6px;background:#2a2f3d;color:#7f8aa7;")
+            label.setStyleSheet("padding:3px 6px;border-radius:6px;background:#2a2f3d;color:#7f8aa7;font-size:11px;")
 
     def render(self, snap: MarketSnapshot, sim: SimulationState) -> None:
         self.price_label.setText(f"{snap.price:,.2f}")
@@ -227,26 +269,23 @@ class DashboardWindow(QMainWindow):
         self.trigger_bar.setValue(int(max(0, min(100, snap.trigger_strength))))
 
         quality = sim.analytics.current_signal_quality or "D"
-        quality_colors = {"A": "#1ecb70", "B": "#56d66f", "C": "#f5c542", "D": "#ff6b6b"}
-        self.quality_label.setText(quality)
+        quality_colors = {"A+": "#00e08a", "A": "#1ecb70", "B": "#56d66f", "C": "#f5c542", "D": "#ff6b6b"}
+        self.quality_label.setText(quality if quality in quality_colors else "D")
         self.quality_label.setStyleSheet(f"font-size:44px;font-weight:800;color:{quality_colors.get(quality, '#ff6b6b')};")
         self.validation_label.setText(f"Validation: conf {sim.analytics.signal_confidence:.1f}% | data {snap.data_quality}")
 
-        self.sim_cards["mode"].setText(sim.mode)
         self.sim_cards["trades"].setText(str(sim.trades))
         self.sim_cards["winrate"].setText(f"{sim.winrate:.1f}%")
-        self.sim_cards["pnl_ticks"].setText(f"{sim.pnl_ticks:+.1f}")
-        self.sim_cards["gross_pnl"].setText(f"{sim.gross_pnl:+.2f}")
-        self.sim_cards["fees"].setText(f"-{sim.fees_paid:.2f}")
         self.sim_cards["net_pnl"].setText(f"{sim.net_pnl:+.2f}")
         self.sim_cards["net_ticks"].setText(f"{sim.net_ticks:+.1f}")
         self.sim_cards["cooldown"].setText(f"{sim.cooldown_seconds_left:.1f}s" if sim.cooldown_active else "READY")
         self.sim_cards["active_trade"].setText(f"{sim.active_trade_side} @ {sim.entry:.2f}" if sim.active_trade_side != "-" else "-")
         self.sim_cards["hold"].setText(f"{sim.hold_seconds:.1f}s")
-        self.sim_cards["tp_sl"].setText(f"TP {sim.tp_progress:.0f}% / SL {sim.sl_progress:.0f}%")
         self.sim_cards["sig_per_h"].setText(f"{sim.signals_per_hour:.1f} / {sim.trades_per_hour:.1f}")
-        self.sim_cards["avg_strength"].setText(f"{sim.avg_signal_strength:.1f}%")
-        self.sim_cards["last_trade"].setText(sim.last_trade_result)
+        self.active_trade_summary.setText(f"{sim.active_trade_side} BTCUSDT")
+        self.active_trade_details.setText(f"Entry {sim.entry:.2f} | Current PnL {sim.net_pnl:+.2f} | Hold {sim.hold_seconds:.1f}s")
+        self.tp_progress_label.setText(f"TP progress {sim.tp_progress:.0f}%")
+        self.sl_progress_label.setText(f"SL progress {sim.sl_progress:.0f}%")
 
         self._set_badge_state(self.state_badges["BUY_PRESSURE"], snap.buy_pressure > 0.58)
         self._set_badge_state(self.state_badges["SWEEP_DOWN"], snap.sweep_down > 0.35)
@@ -266,11 +305,15 @@ class DashboardWindow(QMainWindow):
             self.debug_checks[key].setText(f"{mark} {key}")
             self.debug_checks[key].setStyleSheet(f"color:{color};font-weight:600;")
 
-        flow_line = (
-            f"[STATE:{snap.market_intent}] [EDGE:{snap.edge_score:+.1f}] [BLOCK:{snap.block_reason or '-'}] "
-            f"[SIGNAL:{sim.last_signal}] [ENTRY:{sim.entry:.2f}] [EXIT:{sim.exit_price:.2f}]"
-        )
+        block = snap.block_reason.upper() if snap.block_reason else "SHORT"
+        flow_line = f"{snap.market_intent[:12]} | EDGE {snap.edge_score:+.0f} | {block[:14]} | {sim.last_signal} | E {sim.entry:.2f} X {sim.exit_price:.2f}"
         self.flow_terminal.append(flow_line)
+
+        self.futures_status["mode"].setText("Mode: REALISTIC PAPER")
+        self.futures_status["leverage"].setText("Leverage: 1x")
+        self.futures_status["execution"].setText("Execution: SIMULATED")
+        self.futures_status["fees"].setText("Fees: ON")
+        self.futures_status["slippage"].setText("Slippage: ON")
 
         if sim.last_event in {"ENTRY", "TP", "SL"}:
             effect = QGraphicsOpacityEffect(self.signal_status)

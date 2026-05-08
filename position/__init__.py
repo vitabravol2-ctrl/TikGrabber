@@ -1,0 +1,5 @@
+"""Position management preparation module (paper futures model)."""
+
+from .manager import PositionManager
+
+__all__ = ["PositionManager"]
