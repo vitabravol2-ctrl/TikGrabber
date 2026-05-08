@@ -152,7 +152,7 @@ class DashboardWindow(QMainWindow):
         self.scalp_strip = QLabel("PROFILE - | BUDGET - | ORDER - | LEV - | TP - | SL - | TIMEOUT - | COOLDOWN - | MAX LOSS -")
         self.scalp_strip.setStyleSheet("font-size:11px;color:#9bc1ff;padding:3px 4px;background:#131f34;border:1px solid #2a4068;border-radius:6px;")
         lay.addWidget(self.scalp_strip)
-        keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REAL PROFIT", "AFTER COSTS", "EDGE PACK", "TRIGGER", "EXPECTED MOVE", "BLOCK REASON", "SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
+        keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REQ MOVE", "COST", "TARGET", "NET IF TP", "BLOCK", "SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
         for key in keys:
             lbl = QLabel(f"{key}: -")
             lbl.setStyleSheet("font-size:12px;")
@@ -275,8 +275,11 @@ class DashboardWindow(QMainWindow):
         self.position_rows["EXHAUST"].setText(f"EXHAUST: {snap.exhaustion_score:.0f}")
         self.position_rows["REVERSAL"].setText(f"REVERSAL: {snap.reversal_probability:.0f}%")
         self.position_rows["LATE ENTRY"].setText(f"LATE ENTRY: {snap.late_entry_risk}")
-        self.position_rows["REAL PROFIT"].setText(f"REAL PROFIT: {snap.expected_move_usdt:+.0f} USDT | {snap.expected_move_bps/100:+.3f}%")
-        self.position_rows["AFTER COSTS"].setText(f"AFTER COSTS: {snap.net_expected_profit_after_costs:+.0f} USDT")
+        self.position_rows["REQ MOVE"].setText(f"REQ MOVE: ${snap.required_move_usdt:.2f} / {snap.required_move_ticks:.1f} ticks")
+        self.position_rows["COST"].setText(f"COST: fee ${snap.fee_cost_usdt:.3f} + slip ${snap.slippage_cost_usdt:.3f} + spread ${snap.spread_cost_usdt:.3f}")
+        self.position_rows["TARGET"].setText(f"TARGET: TP ${snap.tp_target_usdt:.2f} / SL ${snap.sl_target_usdt:.2f}")
+        self.position_rows["NET IF TP"].setText(f"NET IF TP: +${max(snap.tp_target_usdt - snap.required_move_usdt, 0.0):.2f}")
+        self.position_rows["BLOCK"].setText(f"BLOCK: {block}{(" | " + snap.block_detail) if snap.block_detail else ""}")
         self.position_rows["EDGE PACK"].setText(f"EDGE / S.EDGE / NET: {edge_pack}")
         self.position_rows["TRIGGER"].setText(f"TRIGGER: {snap.trigger_strength:.1f}")
         self.position_rows["EXPECTED MOVE"].setText(f"EXPECTED MOVE: {snap.expected_move_bps:.2f} bps")
@@ -292,7 +295,7 @@ class DashboardWindow(QMainWindow):
         self.position_rows["SL %"].setText(f"SL %: {sim.sl_progress:.0f}%")
         self.position_rows["FEES / SLIPPAGE"].setText(f"FEES / SLIPPAGE: {sim.fees_paid:.2f} / {sim.avg_slippage:.3f}")
 
-        flat_keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REAL PROFIT", "AFTER COSTS", "EDGE PACK", "TRIGGER", "EXPECTED MOVE", "BLOCK REASON"]
+        flat_keys = ["BEST DIRECTION", "PHASE", "TRAP", "EXHAUST", "REVERSAL", "LATE ENTRY", "REQ MOVE", "COST", "TARGET", "NET IF TP", "BLOCK"]
         active_keys = ["SIDE", "ENTRY", "MARK", "UPNL", "NET TICKS", "HOLD", "TP %", "SL %", "FEES / SLIPPAGE"]
         for key in flat_keys:
             self.position_rows[key].setVisible(not active)
@@ -308,7 +311,7 @@ class DashboardWindow(QMainWindow):
         elif block == "NONE":
             trade_flow_line = "ENTRY READY"
         else:
-            trade_flow_line = f"ENTRY BLOCKED: {block}"
+            trade_flow_line = f"ENTRY BLOCKED: {block}{(" | " + snap.block_detail) if snap.block_detail else ""}"
         dedup_key = f"{snap.market_regime}:{snap.signal_quality}:{edge_bucket}:{snap.noise_level}:{block}:{sim.lifecycle_state}"
         if self._event_guard.should_emit("market_flow", dedup_key):
             self.flow_terminal.append(market_flow_line)

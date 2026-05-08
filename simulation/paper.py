@@ -37,7 +37,7 @@ class SimulatedOrderRouter:
 
 class PaperSimulator:
     PROFILES = {
-        "CONSERVATIVE_SCALP": dict(min_quality="A", allow_quality_b=False, allow_quality_c=False, tp_ticks=2.0, sl_ticks=2.0, max_trades_per_session=10),
+        "CONSERVATIVE_FUTURES": dict(min_quality="A", allow_quality_b=False, allow_quality_c=False, tp_ticks=2.0, sl_ticks=2.0, max_trades_per_session=10, order_notional_usdt=100.0, leverage=1.0, fee_mode="MAKER_TAKER", tp_mode="DYNAMIC_REQUIRED_MOVE", min_desired_profit_usdt=0.03, min_desired_profit_bps=3.0, slippage_buffer_bps=1.0, funding_buffer_bps=0.5, safety_profit_multiplier=1.3),
         "BALANCED_SCALP": dict(min_quality="A", allow_quality_b=True, allow_quality_c=False, tp_ticks=2.0, sl_ticks=3.0, max_trades_per_session=20),
         "TEST_FAST": dict(min_quality="A", allow_quality_b=True, allow_quality_c=True, tp_ticks=1.0, sl_ticks=2.0, max_trades_per_session=50),
     }
@@ -48,6 +48,9 @@ class PaperSimulator:
         self.default_notional_usdt = default_notional_usdt
         self.scalp = PaperScalpingConfig(order_notional_usdt=default_notional_usdt, budget_usdt=default_notional_usdt, leverage=leverage, tp_ticks=float(tp_ticks), sl_ticks=float(sl_ticks), timeout_seconds=timeout_seconds, cooldown_seconds=cooldown_seconds)
         self.apply_profile(self.scalp.profile)
+        self.scalp.order_notional_usdt = default_notional_usdt
+        self.scalp.budget_usdt = default_notional_usdt
+        self.scalp.leverage = leverage
         self.min_hold_seconds = min_hold_ms / 1000.0
         self.execution = ExecutionModel(tick_size=tick_size)
         self._entry_ts = 0.0
@@ -59,7 +62,7 @@ class PaperSimulator:
         self._seen_signal_ids: set[int] = set()
 
     def apply_profile(self, profile: str) -> None:
-        cfg = self.PROFILES.get(profile, self.PROFILES["CONSERVATIVE_SCALP"])
+        cfg = self.PROFILES.get(profile, self.PROFILES["CONSERVATIVE_FUTURES"])
         self.scalp.profile = profile
         for k, v in cfg.items():
             setattr(self.scalp, k, v)
@@ -115,7 +118,7 @@ class PaperSimulator:
         elif self.state.virtual_position != "Flat":
             self._update_position(snap, now)
         self.state.signals_per_hour = self.state.signals_accepted / max(1e-6, (now - self._started_at) / 3600.0)
-        self.state.scalp_summary = f"PROFILE {self.scalp.profile.replace('_SCALP', '')} | BUDGET {self.scalp.budget_usdt:.0f} | ORDER {self.scalp.order_notional_usdt:.0f} | LEV {self.scalp.leverage:.0f}x | TP {self.scalp.tp_ticks:.0f}t | SL {self.scalp.sl_ticks:.0f}t | TIMEOUT {self.scalp.timeout_seconds:.0f}s | COOLDOWN {self.scalp.cooldown_seconds:.0f}s | MAX LOSS {self.scalp.session_max_loss_usdt:.0f}"
+        self.state.scalp_summary = f"PROFILE {self.scalp.profile} | ORDER {self.scalp.order_notional_usdt:.0f} | LEV {self.scalp.leverage:.0f}x | TP {self.scalp.tp_ticks:.1f}t | SL {self.scalp.sl_ticks:.1f}t | FEE {self.scalp.fee_mode}"
         return self.state
 
     def _open_position(self, snap: MarketSnapshot, signal: TradeSignal, now: float) -> None:
@@ -152,6 +155,11 @@ class PaperSimulator:
         self.state.virtual_position = direction
         self.state.active_trade_side = direction
         self.state.entry = fill.price
+        if self.scalp.tp_mode == "DYNAMIC_REQUIRED_MOVE" and snap.required_move_ticks > 0:
+            dyn_tp = max(snap.required_move_ticks * self.scalp.safety_profit_multiplier, snap.required_move_ticks)
+            dyn_sl = min(max(dyn_tp * 0.8, snap.required_move_ticks * 0.8), dyn_tp * 1.2)
+            self.scalp.tp_ticks = dyn_tp
+            self.scalp.sl_ticks = dyn_sl
         self.state.last_entry_price = fill.price
         self.state.notional = self.scalp.order_notional_usdt
         self.state.leverage = self.scalp.leverage
