@@ -68,3 +68,12 @@ class SimulationState:
     short_winrate: float = 0.0
     edge_history: list[float] = field(default_factory=list)
     analytics: SignalAnalyticsState = field(default_factory=SignalAnalyticsState)
+    active_trade_side: str = "-"
+    tp_progress: float = 0.0
+    sl_progress: float = 0.0
+    last_event: str = "-"
+    signals_count: int = 0
+    signals_per_hour: float = 0.0
+    trades_per_hour: float = 0.0
+    avg_signal_strength: float = 0.0
+    winrate_by_strength: dict[str, float] = field(default_factory=dict)

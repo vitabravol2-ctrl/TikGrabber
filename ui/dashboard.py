@@ -68,7 +68,7 @@ class EdgeGauge(QWidget):
 class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BTCUSDT Game Theory Engine v0.5.1")
+        self.setWindowTitle("BTCUSDT Game Theory Engine v0.6")
         self.resize(1240, 760)
         self.setStyleSheet(
             "QWidget{background:#0f1117;color:#d8deef;font-family:Inter,Segoe UI;}"
@@ -195,7 +195,7 @@ class DashboardWindow(QMainWindow):
     def _build_simulation_panel(self) -> QFrame:
         panel, lay = self._panel("SIMULATION CARDS")
         cards = QGridLayout()
-        self.sim_cards = {k: QLabel("-") for k in ["trades", "winrate", "pnl_ticks", "avg_pnl", "last_trade"]}
+        self.sim_cards = {k: QLabel("-") for k in ["trades", "winrate", "pnl_ticks", "active_trade", "hold", "tp_sl", "sig_per_h", "avg_strength", "last_trade"]}
         for i, (k, lbl) in enumerate(self.sim_cards.items()):
             box = QFrame(); box.setStyleSheet("QFrame{background:#0e1521;border:1px solid #2a3650;border-radius:8px;}")
             bl = QVBoxLayout(box)
@@ -235,7 +235,11 @@ class DashboardWindow(QMainWindow):
         self.sim_cards["trades"].setText(str(sim.trades))
         self.sim_cards["winrate"].setText(f"{sim.winrate:.1f}%")
         self.sim_cards["pnl_ticks"].setText(f"{sim.pnl_ticks:+.1f}")
-        self.sim_cards["avg_pnl"].setText(f"{sim.avg_pnl:+.2f}")
+        self.sim_cards["active_trade"].setText(f"{sim.active_trade_side} @ {sim.entry:.2f}" if sim.active_trade_side != "-" else "-")
+        self.sim_cards["hold"].setText(f"{sim.hold_seconds:.1f}s")
+        self.sim_cards["tp_sl"].setText(f"TP {sim.tp_progress:.0f}% / SL {sim.sl_progress:.0f}%")
+        self.sim_cards["sig_per_h"].setText(f"{sim.signals_per_hour:.1f} / {sim.trades_per_hour:.1f}")
+        self.sim_cards["avg_strength"].setText(f"{sim.avg_signal_strength:.1f}%")
         self.sim_cards["last_trade"].setText(sim.last_trade_result)
 
         self._set_badge_state(self.state_badges["BUY_PRESSURE"], snap.buy_pressure > 0.58)
@@ -262,7 +266,7 @@ class DashboardWindow(QMainWindow):
         )
         self.flow_terminal.append(flow_line)
 
-        if sim.last_signal not in {"NONE", "WAIT", "-"}:
+        if sim.last_event in {"ENTRY", "TP", "SL"}:
             effect = QGraphicsOpacityEffect(self.signal_status)
             self.signal_status.setGraphicsEffect(effect)
             pulse = QPropertyAnimation(effect, b"opacity", self)
