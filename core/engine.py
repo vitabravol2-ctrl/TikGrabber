@@ -34,6 +34,9 @@ class DataQualityGate:
             return {"data_quality": "BookMissing", "data_quality_reason": "MISSING_BOOK_TICKER", "book_status": "Missing", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if str(event.get("book_status", "")).lower() == "ok_fallback":
             return {"data_quality": "Good", "data_quality_reason": "GOOD", "book_status": "OK_FALLBACK", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": depth_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": depth_ready}
+        streams_seen = {str(s).lower() for s in event.get("ws_streams_seen", [])}
+        if book_age_ms < 0 and "bookticker" in streams_seen and book_ready:
+            return {"data_quality": "BookMissing", "data_quality_reason": "BOOK_CONFLICT", "book_status": "Unknown", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if book_age_ms < 0:
             if warmup_elapsed <= self.book_warmup_grace_ms:
                 return {"data_quality": "Warmup", "data_quality_reason": "WARMUP_BOOK", "book_status": "Warmup", "depth_status": "OK" if depth_ready else "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
@@ -43,6 +46,8 @@ class DataQualityGate:
             return {"data_quality": "BookMissing", "data_quality_reason": reason, "book_status": "OK", "depth_status": "Missing", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if book_age_ms >= self.book_stale_ms:
             return {"data_quality": "Stale", "data_quality_reason": "STALE_BOOK", "book_status": "Stale", "depth_status": "OK", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
+        if depth_age_ms >= self.depth_stale_ms and "depth" in streams_seen and depth_ready:
+            return {"data_quality": "Stale", "data_quality_reason": "DEPTH_CONFLICT", "book_status": "OK", "depth_status": "Stale", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if depth_age_ms >= self.depth_stale_ms:
             return {"data_quality": "Stale", "data_quality_reason": "STALE_DEPTH", "book_status": "OK", "depth_status": "Stale", "book_age_ms": book_age_ms, "depth_age_ms": depth_age_ms, "can_trade_data": False}
         if tick_speed < 2:

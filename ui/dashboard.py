@@ -294,11 +294,18 @@ class DashboardWindow(QMainWindow):
 
         edge_bucket = int(round(snap.smoothed_edge_score / 10.0) * 10)
         market_flow_line = f"REGIME -> {snap.market_regime} | QUALITY -> {snap.signal_quality} | EDGE BUCKET -> {edge_bucket:+d} | NOISE -> {snap.noise_level}"
-        trade_flow_line = f"WAITING SETUP | BLOCK: {block} | LAST CANDIDATE: {best_dir} {snap.signal_quality}"
+        if snap.final_entry_decision == "ORDER SENT":
+            trade_flow_line = f"ORDER SENT {snap.candidate_direction}"
+        elif snap.setup_armed and snap.setup_armed_ticks > 0:
+            trade_flow_line = f"SETUP ARMED {snap.candidate_direction} {snap.candidate_quality} {snap.setup_armed_ticks}/3"
+        elif block == "NONE":
+            trade_flow_line = "ENTRY READY"
+        else:
+            trade_flow_line = f"ENTRY BLOCKED: {block}"
         dedup_key = f"{snap.market_regime}:{snap.signal_quality}:{edge_bucket}:{snap.noise_level}:{block}:{sim.lifecycle_state}"
         if self._event_guard.should_emit("market_flow", dedup_key):
             self.flow_terminal.append(market_flow_line)
-        if self._event_guard.should_emit("trade_flow_waiting", f"{block}:{best_dir}:{snap.signal_quality}"):
+        if self._event_guard.should_emit("trade_flow_waiting", f"{trade_flow_line}:{block}:{best_dir}:{snap.signal_quality}:{snap.setup_armed_ticks}"):
             self.trade_flow_terminal.append(trade_flow_line)
         new_events = sim.trade_events[self._last_trade_event_idx :]
         for event in new_events:
