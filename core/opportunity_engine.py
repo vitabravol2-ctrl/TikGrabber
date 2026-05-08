@@ -56,21 +56,46 @@ class RealOpportunityEngine:
             + liquidation_potential * 0.10
         ) - (reversal_probability * 0.25 + exhaustion_score * 0.20 + late_entry_risk * 0.20)
 
+        edge_bucket = max(0.0, min(100.0, snap.net_edge_score))
+        strong_quality = snap.signal_quality == "A" and snap.noise_level == "LOW"
+        sweep_strength = max(snap.sweep_up, snap.sweep_down)
+        if strong_quality and edge_bucket > 60 and snap.market_regime in {"BUY_PRESSURE", "SELL_PRESSURE"}:
+            opportunity_score = max(opportunity_score, 50.0 + (edge_bucket - 60.0) * 0.5)
+        if strong_quality and edge_bucket > 70 and snap.market_regime == "LIQUIDITY_TRAP":
+            opportunity_score = max(opportunity_score, 60.0 + (edge_bucket - 70.0) * 0.45 + snap.trap * 8.0)
+        if strong_quality and edge_bucket > 70 and (snap.market_regime == "SWEEP_HUNT" or sweep_strength > 0.72):
+            opportunity_score = max(opportunity_score, 60.0 + (edge_bucket - 70.0) * 0.4 + sweep_strength * 8.0)
+        if snap.market_regime == "DEAD_MARKET":
+            opportunity_score = min(opportunity_score, 20.0)
+        opportunity_score = self._clamp(opportunity_score)
+
         liquidity_vacuum = snap.spread <= 2.0 and snap.ticks_per_second >= 3.0
         volatility_expansion = abs(snap.velocity) > (snap.spread * 0.5)
-        base_move_ticks = (
-            0.6
-            + (acceleration_score / 100.0) * 4.0
-            + (momentum_persistence / 100.0) * 3.0
-            + (breakout_energy / 100.0) * 3.0
-            + (trapped_liquidity_score / 100.0) * 2.5
-            + (1.2 if liquidity_vacuum else 0.0)
-            + (0.8 if volatility_expansion else 0.0)
-        )
+        strong_regime = snap.market_regime in {"BUY_PRESSURE", "SELL_PRESSURE", "LIQUIDITY_TRAP", "SWEEP_HUNT"}
+        if strong_regime:
+            base_move_ticks = (
+                5.0
+                + (acceleration_score / 100.0) * 4.0
+                + (momentum_persistence / 100.0) * 2.8
+                + (breakout_energy / 100.0) * 2.6
+                + (trapped_liquidity_score / 100.0) * 2.2
+                + (1.6 if liquidity_vacuum else 0.0)
+                + (1.0 if volatility_expansion else 0.0)
+            )
+            base_move_ticks = min(15.0, base_move_ticks)
+        else:
+            base_move_ticks = (
+                0.3
+                + (acceleration_score / 100.0) * 1.2
+                + (momentum_persistence / 100.0) * 1.1
+                + (breakout_energy / 100.0) * 0.8
+            )
         if snap.market_regime in {"DEAD_MARKET", "COMPRESSION"}:
-            base_move_ticks *= 0.25
-        base_move_ticks *= max(0.15, 1.0 - (exhaustion_score / 160.0))
-        base_move_ticks *= max(0.2, 1.0 - (reversal_probability / 170.0))
+            base_move_ticks = min(base_move_ticks * 0.35, 2.0)
+        noise_penalty = 1.0 if snap.noise_level == "LOW" else (0.65 if snap.noise_level == "MID" else 0.35)
+        base_move_ticks *= noise_penalty
+        base_move_ticks *= max(0.1, 1.0 - (exhaustion_score / 130.0))
+        base_move_ticks *= max(0.1, 1.0 - (reversal_probability / 140.0))
         if trapped_shorts:
             base_move_ticks += 1.2
         if trapped_longs:

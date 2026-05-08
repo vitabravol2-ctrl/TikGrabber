@@ -69,6 +69,7 @@ def test_dead_market_rejected():
 def test_trapped_shorts_increases_move():
     eng = RealOpportunityEngine()
     snap = _base_snapshot()
+    snap.trap = 0.2
     a = eng.evaluate(snap, 100).expected_move_ticks_real
     snap.trap = 0.9
     snap.buy_pressure = 0.75
@@ -140,3 +141,64 @@ def test_cascade_setup_increases_score():
     snap.ticks_per_second = 15
     boosted = eng.evaluate(snap, 100).opportunity_score
     assert boosted > normal
+
+
+def test_strong_buy_pressure_opportunity_high():
+    eng = RealOpportunityEngine()
+    snap = _base_snapshot()
+    snap.market_regime = "BUY_PRESSURE"
+    snap.signal_quality = "A"
+    snap.noise_level = "LOW"
+    snap.net_edge_score = 72
+    out = eng.evaluate(snap, 100)
+    assert out.opportunity_score >= 50
+
+
+def test_liquidity_trap_opportunity_high():
+    eng = RealOpportunityEngine()
+    snap = _base_snapshot()
+    snap.market_regime = "LIQUIDITY_TRAP"
+    snap.signal_quality = "A"
+    snap.noise_level = "LOW"
+    snap.net_edge_score = 78
+    snap.trap = 0.9
+    out = eng.evaluate(snap, 100)
+    assert out.opportunity_score >= 60
+
+
+def test_dead_market_opportunity_low():
+    eng = RealOpportunityEngine()
+    snap = _base_snapshot()
+    snap.market_regime = "DEAD_MARKET"
+    out = eng.evaluate(snap, 100)
+    assert 0 <= out.opportunity_score <= 20
+
+
+def test_real_move_exceeds_required_when_strong():
+    eng = RealOpportunityEngine()
+    snap = _base_snapshot()
+    snap.market_regime = "SWEEP_HUNT"
+    snap.signal_quality = "A"
+    snap.noise_level = "LOW"
+    snap.net_edge_score = 82
+    snap.sweep_up = 0.95
+    out = eng.evaluate(snap, 100)
+    assert out.expected_move_ticks_real >= 5
+    assert out.expected_move_usdt_real >= snap.required_move_usdt * 1.5
+
+
+def test_book_conflict_not_blocking_with_fresh_bookticker():
+    risk = FuturesRiskControls()
+    snap = _base_snapshot()
+    snap.book_status = "OK"
+    snap.depth_status = "OK"
+    snap.data_quality_reason = "GOOD"
+    snap.real_opportunity = True
+    snap.opportunity_score = 70
+    snap.continuation_strength = 70
+    snap.impulse_probability = 70
+    snap.microstructure_state = "CASCADE_SETUP"
+    snap.liquidation_potential = 70
+    snap.expected_move_usdt_real = snap.required_move_usdt * 2.0
+    ok, reason = risk.evaluate_entry(snap, FuturesPositionModel(), 1.0, False)
+    assert ok and reason == "PASS"
