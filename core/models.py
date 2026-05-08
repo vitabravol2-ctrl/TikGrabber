@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from replay import ReplayState
 from time import time
 
 
@@ -92,6 +94,7 @@ class SimulationState:
     last_net_pnl: float = 0.0
     last_net_ticks: float = 0.0
     accepted_signal_id: int | None = None
+    replay: ReplayState = field(default_factory=ReplayState)
 
 
 @dataclass
