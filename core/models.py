@@ -27,6 +27,10 @@ class MarketSnapshot:
     timestamp: float = field(default_factory=time)
     trap_probability: float = 0.0
     volume_24h: float = 0.0
+    long_debug: str = ""
+    short_debug: str = ""
+    block_reason: str = ""
+    trigger_strength: float = 0.0
 
 
 @dataclass

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import logging
 import sys
 
 from PySide6.QtWidgets import QApplication
 
 from core.engine import GameTheoryEngine
 from core.models import MarketSnapshot
-from ws.binance_ws import BinanceFeedThread
+from decision_engine import SignalDecisionEngine
 from simulation.paper import PaperSimulator
-from signal_engine import SignalEngine
 from validation import SignalValidationEngine
+from ws.binance_ws import BinanceFeedThread
 from ui.dashboard import DashboardWindow
 
 
@@ -20,10 +21,17 @@ class AppController:
         self.engine = GameTheoryEngine()
         self.validator = SignalValidationEngine()
         self.sim = PaperSimulator(on_trade_closed=self.validator.resolve_signal)
-        self.signals = SignalEngine()
+        self.decision_engine = SignalDecisionEngine()
         self.feed = BinanceFeedThread()
         self.feed.market_event.connect(self.on_market_event)
         self.feed.status.connect(self.on_status)
+        self.log = logging.getLogger("signal_flow")
+        if not self.log.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
+            self.log.addHandler(handler)
+        self.log.setLevel(logging.INFO)
+        self._last_flow = ""
 
     def on_status(self, status: str) -> None:
         self.snapshot.ws_status = status
@@ -34,7 +42,17 @@ class AppController:
             return
         self.snapshot = self.engine.update(self.snapshot, event)
         self.validator.register_event(self.snapshot)
-        signal = self.signals.evaluate(self.snapshot)
+
+        decision = self.decision_engine.evaluate(self.snapshot)
+        signal = decision.signal
+        self.snapshot.long_debug = " | ".join(f"{c.name}:{'YES' if c.passed else 'NO'}" for c in decision.long_checks)
+        self.snapshot.short_debug = " | ".join(f"{c.name}:{'YES' if c.passed else 'NO'}" for c in decision.short_checks)
+        blockers = decision.long_blockers if signal.value in {"LONG", "NONE"} else decision.short_blockers
+        self.snapshot.block_reason = ", ".join(blockers) if blockers else "NONE"
+        self.snapshot.trigger_strength = decision.trigger_strength
+
+        self._flow_log(signal.value, decision)
+
         signal_id = self.validator.register_signal(self.snapshot, signal)
         sim_state = self.sim.step(self.snapshot, signal, signal_id)
         analytics = self.validator.analytics()
@@ -46,6 +64,16 @@ class AppController:
         sim_state.analytics.best_combo = analytics["best_combo"]
         sim_state.analytics.worst_combo = analytics["worst_combo"]
         self.window.render(self.snapshot, sim_state)
+
+    def _flow_log(self, signal: str, decision) -> None:
+        state = self.snapshot.market_intent
+        edge = self.snapshot.edge_score
+        block = self.snapshot.block_reason
+        entry = self.sim.state.virtual_position
+        flow = f"[STATE] {state} [EDGE] {edge:+.1f} [BLOCK] {block} [SIGNAL] {signal} [ENTRY] {entry}"
+        if flow != self._last_flow:
+            self.log.info(flow)
+            self._last_flow = flow
 
     def run(self) -> None:
         self.window.show()

@@ -41,7 +41,7 @@ class DashboardWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BTCUSDT Game Theory Engine v0.4")
-        self.resize(1240, 820)
+        self.resize(1380, 900)
         self.setStyleSheet("QWidget{background:#0f1117;color:#e6e6e6;font-family:Inter,Segoe UI;} QFrame{border:1px solid #202535;border-radius:10px;background:#131722;} QProgressBar{border:none;background:#1a1f2c;height:22px;border-radius:10px;} QProgressBar::chunk{border-radius:10px;background:#1ecb70;}")
 
         root = QWidget()
@@ -78,6 +78,10 @@ class DashboardWindow(QMainWindow):
 
         self.status_labels = {k: QLabel("-") for k in ["ws_status", "latency", "tps", "quality"]}
         grid.addWidget(self._panel("DATA STATUS", [QLabel("WS STATUS"), self.status_labels["ws_status"], QLabel("LATENCY"), self.status_labels["latency"], QLabel("TICKS/SEC"), self.status_labels["tps"], QLabel("DATA QUALITY"), self.status_labels["quality"]]), 3, 1)
+
+        self.debug_labels = {k: QLabel("-") for k in ["long", "short", "block", "strength"]}
+        grid.addWidget(self._panel("SIGNAL DEBUG PANEL", [QLabel("LONG CHECK"), self.debug_labels["long"], QLabel("SHORT CHECK"), self.debug_labels["short"], QLabel("BLOCKERS"), self.debug_labels["block"], QLabel("TRIGGER STRENGTH"), self.debug_labels["strength"]]), 4, 0, 1, 2)
+
         self.setCentralWidget(root)
 
     def _panel(self, title: str, widgets: list[QWidget]) -> QFrame:
@@ -128,3 +132,8 @@ class DashboardWindow(QMainWindow):
         self.status_labels["latency"].setText(f"{snap.latency_ms:.0f} ms")
         self.status_labels["tps"].setText(f"{snap.ticks_per_second:.1f}")
         self.status_labels["quality"].setText(snap.data_quality)
+
+        self.debug_labels["long"].setText(snap.long_debug or "-")
+        self.debug_labels["short"].setText(snap.short_debug or "-")
+        self.debug_labels["block"].setText(snap.block_reason or "-")
+        self.debug_labels["strength"].setText(f"{snap.trigger_strength:.1f}%")
