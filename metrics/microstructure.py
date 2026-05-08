@@ -4,6 +4,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from time import time
 
+from microstructure import OrderBookMemory
+
 
 @dataclass
 class MicrostructureMetrics:
@@ -21,6 +23,16 @@ class MicrostructureMetrics:
     local_volatility: float = 0.0
     mini_volume_24h: float = 0.0
     liquidity_shift: float = 0.0
+    stable_bid_wall: bool = False
+    stable_ask_wall: bool = False
+    liquidity_pull: str = "NONE"
+    liquidity_add: str = "NONE"
+    absorption: str = "NONE"
+    exhaustion: str = "NONE"
+    imbalance_persistence: float = 0.0
+    aggressive_continuation: float = 0.0
+    microstructure_score: float = 50.0
+    liquidity_quality: float = 50.0
 
 
 @dataclass
@@ -29,6 +41,7 @@ class MicrostructureTracker:
     _prices: deque[tuple[float, float]] = field(default_factory=lambda: deque(maxlen=240))
     _spreads: deque[float] = field(default_factory=lambda: deque(maxlen=150))
     _imbalance: deque[float] = field(default_factory=lambda: deque(maxlen=120))
+    _obm: OrderBookMemory = field(default_factory=OrderBookMemory)
 
     def update_trade(self, price: float, qty: float, buyer_maker: bool) -> None:
         now = time()
@@ -78,6 +91,8 @@ class MicrostructureTracker:
                 rets.append((p1 - p0) / p0)
         volatility = (sum(abs(x) for x in rets) / len(rets) * 10000.0) if rets else 0.0
 
+        obm = self._obm.update(price=(self._prices[-1][1] if self._prices else bid), bid_volume_total=bid_volume_total, ask_volume_total=ask_volume_total, imbalance=imbalance, trade_velocity=tps, buy_pressure=buy_pressure)
+
         return MicrostructureMetrics(
             aggressive_buy_pressure=buy_pressure,
             aggressive_sell_pressure=1.0 - buy_pressure,
@@ -93,4 +108,14 @@ class MicrostructureTracker:
             local_volatility=volatility,
             mini_volume_24h=mini_volume_24h,
             liquidity_shift=min(1.0, shift * 4.0),
+            stable_bid_wall=obm.stable_bid_wall,
+            stable_ask_wall=obm.stable_ask_wall,
+            liquidity_pull=obm.liquidity_pull,
+            liquidity_add=obm.liquidity_add,
+            absorption=obm.absorption,
+            exhaustion=obm.exhaustion,
+            imbalance_persistence=obm.imbalance_persistence,
+            aggressive_continuation=obm.aggressive_continuation,
+            microstructure_score=obm.microstructure_score,
+            liquidity_quality=obm.liquidity_quality,
         )

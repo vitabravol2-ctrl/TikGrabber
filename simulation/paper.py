@@ -45,6 +45,8 @@ class PaperSimulator:
         self._last_close_ts = 0.0
         self._last_setup_key: tuple[str, str, int] | None = None
         self._last_accepted_signature: tuple[str, int | None, tuple[str, str, int]] | None = None
+        self._exec_quality_sum = 0.0
+        self._slippage_sum = 0.0
 
     def step(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None = None) -> SimulationState:
         now = time()
@@ -89,8 +91,10 @@ class PaperSimulator:
             self.state.last_event = "SETUP_BLOCK"
             return
 
-        fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread)
-        if fill is None or fill.price <= 0:
+        fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
+        if fill is None or fill.price <= 0 or fill.missed:
+            self.state.missed_fills += 1
+            self.state.last_event = "MISS_ENTRY"
             return
 
         self.state.virtual_position = direction
@@ -100,6 +104,9 @@ class PaperSimulator:
         self._entry_side = direction
         self._entry_fees = fill.fee_paid
         self.state.trades += 1
+        self.state.queue_delay_ms = fill.queue_delay_ms
+        if fill.partial:
+            self.state.partial_fills += 1
         self.state.last_event = "ENTRY"
         self.state.accepted_signal_id = signal_id
         self.state.signals_count += 1
@@ -132,8 +139,9 @@ class PaperSimulator:
             self._close_trade(snap, "TIMEOUT", now)
 
     def _close_trade(self, snap: MarketSnapshot, reason: str, now: float) -> None:
-        exit_fill = self.execution.exit_fill(self._entry_side, snap.price, snap.spread)
-        if exit_fill is None or exit_fill.price <= 0:
+        exit_fill = self.execution.exit_fill(self._entry_side, snap.price, snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
+        if exit_fill is None or exit_fill.price <= 0 or exit_fill.missed:
+            self.state.missed_fills += 1
             return
 
         direction = 1 if self._entry_side == "Long" else -1
@@ -169,6 +177,11 @@ class PaperSimulator:
         self.state.avg_hold_seconds = self._hold_sum / self.state.trades
         self.state.long_winrate = self.state.long_wins / self.state.long_trades * 100.0 if self.state.long_trades else 0.0
         self.state.short_winrate = self.state.short_wins / self.state.short_trades * 100.0 if self.state.short_trades else 0.0
+        self.state.execution_quality = (self.state.queue_delay_ms * 0 + (self.execution._quality(exit_fill.queue_delay_ms, exit_fill.slippage_paid, snap.spread, False)))
+        self._exec_quality_sum += (exit_fill.execution_quality + self.state.execution_quality) / 2.0
+        self._slippage_sum += (exit_fill.slippage_paid + self.execution.slippage) / 2.0
+        self.state.avg_execution_quality = self._exec_quality_sum / self.state.trades
+        self.state.avg_slippage = self._slippage_sum / self.state.trades
 
         bucket = self._strength_bucket(self.state.avg_signal_strength)
         self._strength_total[bucket] += 1
