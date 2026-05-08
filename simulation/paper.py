@@ -55,6 +55,7 @@ class PaperSimulator:
         self._last_accepted_signature: tuple[str, int | None, tuple[str, str, int]] | None = None
         self._exec_quality_sum = 0.0
         self._slippage_sum = 0.0
+        self._last_lifecycle_event = ""
 
     def step(self, snap: MarketSnapshot, signal: TradeSignal, signal_id: int | None = None) -> SimulationState:
         now = time()
@@ -90,7 +91,7 @@ class PaperSimulator:
 
     def _try_open_trade(self, snap: MarketSnapshot, signal: TradeSignal, now: float, signal_id: int | None) -> None:
         if self.state.cooldown_active:
-            self.state.last_event = "COOLDOWN_BLOCK"
+            self._emit_event("COOLDOWN_BLOCK")
             self.state.lifecycle_state = "COOLDOWN"
             return
         if signal_id is not None and signal_id in self._used_signal_ids:
@@ -100,16 +101,16 @@ class PaperSimulator:
         setup_key = (direction, snap.market_intent, round(snap.edge_score / self.anti_spam_edge_delta))
         signature = (signal.value, signal_id, setup_key)
         if signature == self._last_accepted_signature:
-            self.state.last_event = "DUPLICATE_BLOCK"
+            self._emit_event("DUPLICATE_BLOCK")
             return
         if setup_key == self._last_setup_key:
-            self.state.last_event = "SETUP_BLOCK"
+            self._emit_event("SETUP_BLOCK")
             return
 
         fill = self.execution.entry_fill(direction=direction, price=snap.price, spread=snap.spread, volatility=abs(snap.velocity), liquidity=max(0.05, 1.0 - min(0.95, snap.spread / max(1.0, snap.price * 0.0002))), aggression=max(snap.buy_pressure, snap.sell_pressure))
         if fill is None or fill.price <= 0 or fill.missed:
             self.state.missed_fills += 1
-            self.state.last_event = "ENTRY MISSED"
+            self._emit_event("ENTRY MISSED")
             self.state.lifecycle_state = "ENTRY_PENDING"
             return
 
@@ -126,13 +127,14 @@ class PaperSimulator:
         self._entry_side = direction
         self._entry_fees = self._entry_notional * self.execution.fee_rate
         self.state.trades += 1
+        self.state.opened_trades += 1
         self.state.queue_delay_ms = fill.queue_delay_ms
         if fill.partial:
             self.state.partial_fills += 1
             self.state.lifecycle_state = "PARTIAL_ENTRY"
-            self.state.last_event = f"PARTIAL FILL {max(1,int(100.0 * 0.5))}%"
+            self._emit_event(f"PARTIAL FILL {max(1,int(100.0 * 0.5))}%")
         else:
-            self.state.last_event = f"{direction.upper()} OPENED {self.default_notional_usdt:.0f} USDT"
+            self._emit_event("LONG_OPENED" if direction == "Long" else "SHORT_OPENED")
             self.state.lifecycle_state = "ACTIVE_POSITION"
         self.state.accepted_signal_id = signal_id
         self.state.signals_count += 1
@@ -187,7 +189,7 @@ class PaperSimulator:
         self.state.net_pnl = net_pnl
         self.state.net_ticks = net_ticks
         self.state.last_trade_result = f"{self._entry_side} {reason} gross {gross_pnl:+.2f} net {net_pnl:+.2f} ({net_ticks:+.1f} ticks)"
-        self.state.last_event = reason
+        self._emit_event(reason)
         self.state.lifecycle_state = "EXITING"
         self.state.last_entry_price = self.state.entry
         self.state.last_exit_price = exit_fill.price
@@ -204,16 +206,17 @@ class PaperSimulator:
 
         self._pnl_sum += net_ticks
         self._hold_sum += hold
-        self.state.winrate = self.state.wins / self.state.trades * 100.0
-        self.state.avg_pnl = self._pnl_sum / self.state.trades
-        self.state.avg_hold_seconds = self._hold_sum / self.state.trades
+        self.state.closed_trades += 1
+        self.state.winrate = self.state.wins / self.state.closed_trades * 100.0
+        self.state.avg_pnl = self._pnl_sum / self.state.closed_trades
+        self.state.avg_hold_seconds = self._hold_sum / self.state.closed_trades
         self.state.long_winrate = self.state.long_wins / self.state.long_trades * 100.0 if self.state.long_trades else 0.0
         self.state.short_winrate = self.state.short_wins / self.state.short_trades * 100.0 if self.state.short_trades else 0.0
         self.state.execution_quality = (self.state.queue_delay_ms * 0 + (self.execution._quality(exit_fill.queue_delay_ms, exit_fill.slippage_paid, snap.spread, False)))
         self._exec_quality_sum += (exit_fill.execution_quality + self.state.execution_quality) / 2.0
         self._slippage_sum += (exit_fill.slippage_paid + self.execution.slippage) / 2.0
-        self.state.avg_execution_quality = self._exec_quality_sum / self.state.trades
-        self.state.avg_slippage = self._slippage_sum / self.state.trades
+        self.state.avg_execution_quality = self._exec_quality_sum / self.state.closed_trades
+        self.state.avg_slippage = self._slippage_sum / self.state.closed_trades
 
         bucket = self._strength_bucket(self.state.avg_signal_strength)
         self._strength_total[bucket] += 1
@@ -246,3 +249,9 @@ class PaperSimulator:
         if strength >= 70:
             return "70-84"
         return "<70"
+
+
+    def _emit_event(self, event: str) -> None:
+        if event != self._last_lifecycle_event:
+            self.state.last_event = event
+            self._last_lifecycle_event = event

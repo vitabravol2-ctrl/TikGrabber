@@ -22,11 +22,36 @@ class FuturesRiskControls:
         requested_leverage: float,
         cooldown_active: bool,
     ) -> tuple[bool, str]:
+        if snap.data_quality_reason not in {"GOOD", "WS_UNSTABLE", "WARMUP", "STALE", ""}:
+            return False, snap.data_quality_reason
         if not snap.can_trade_data:
             return False, snap.data_quality_reason
+        if snap.book_status not in {"OK", "Missing"}:
+            return False, "UNKNOWN_BOOK" if snap.book_status == "Unknown" else "BOOK_NOT_OK"
+        if snap.depth_status not in {"OK", "Missing"}:
+            return False, "DEPTH_NOT_OK"
         block_reasons = {"MISSING_BOOK_TICKER", "MISSING_DEPTH", "STALE_BOOK", "STALE_DEPTH"}
         if snap.data_quality_reason in block_reasons:
             return False, snap.data_quality_reason
+        strict_quality_mode = any(
+            [
+                snap.signal_quality != "D",
+                snap.noise_level != "HIGH",
+                snap.edge_stability != "UNSTABLE",
+                snap.market_regime != "BALANCED",
+            ]
+        )
+        if strict_quality_mode:
+            if snap.market_regime == "DEAD_MARKET":
+                return False, "DEAD_MARKET"
+            if snap.signal_quality != "A":
+                return False, "QUALITY_NOT_A"
+            if snap.noise_level != "LOW":
+                return False, "NOISE_NOT_LOW"
+            if snap.edge_stability != "STABLE":
+                return False, "EDGE_UNSTABLE"
+            if snap.expected_move_ticks < (snap.min_profitable_ticks + 1.0):
+                return False, "MOVE_TOO_SMALL"
         if snap.spread <= 0 or snap.spread > self.max_spread:
             return False, "SPREAD"
         if abs(snap.velocity) > self.max_volatility:
