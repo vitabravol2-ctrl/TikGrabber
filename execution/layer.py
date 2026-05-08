@@ -7,6 +7,7 @@ from core.models import FuturesExecutionConfig, SimulationState
 LIVE_TRADING_ENABLED = False
 API_KEYS_ALLOWED = False
 REAL_ORDERS_ALLOWED = False
+ORDER_ROUTER_MODE = "SIMULATED"
 
 
 @dataclass
@@ -25,6 +26,8 @@ class FuturesExecutionLayer:
         }
 
     def can_route_live_order(self) -> bool:
+        if LIVE_TRADING_ENABLED:
+            raise RuntimeError("LIVE_TRADING_ENABLED must remain False in NEAR_LIVE_PAPER mode")
         return LIVE_TRADING_ENABLED and REAL_ORDERS_ALLOWED and API_KEYS_ALLOWED
 
     def assert_paper_only(self) -> None:
