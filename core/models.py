@@ -37,6 +37,18 @@ class MarketSnapshot:
     net_edge_score: float = 0.0
     expected_move_ticks: float = 0.0
     min_profitable_ticks: float = 0.0
+    expected_move_bps: float = 0.0
+    expected_move_usdt: float = 0.0
+    net_expected_profit_after_costs: float = 0.0
+    minimum_real_move_usdt: float = 35.0
+    market_phase: str = "ACCUMULATION"
+    trap_score: float = 0.0
+    exhaustion_score: float = 0.0
+    reversal_probability: float = 0.0
+    late_entry_risk: str = "LOW"
+    fomo_risk: float = 0.0
+    late_move_penalty: float = 0.0
+    position_mode: str = "SCALP_CONTINUATION"
     liquidity_regime_score: float = 0.0
     book_age_ms: float = 0.0
     depth_age_ms: float = 0.0
@@ -81,6 +93,7 @@ class PaperScalpingConfig:
     allow_quality_c: bool = False
     min_expected_move_ticks: float = 3.0
     min_profit_buffer_ticks: float = 1.0
+    minimum_real_move_usdt: float = 35.0
     min_net_edge_score: float = 25.0
     max_spread_ticks: float = 2.0
     max_slippage_ticks: float = 1.0
@@ -90,7 +103,7 @@ class PaperScalpingConfig:
     max_trades_per_session: int = 10
     max_consecutive_losses: int = 3
     max_allowed_leverage: float = 3.0
-    profile: str = "CONSERVATIVE_SCALP"
+    profile: str = "CONSERVATIVE_FUTURES"
 
 
 @dataclass
@@ -193,7 +206,7 @@ class SimulationState:
     sequence_name: str = ""
     sequence_confidence: float = 0.0
     setup_explanation: str = ""
-    profile: str = "CONSERVATIVE_SCALP"
+    profile: str = "CONSERVATIVE_FUTURES"
     max_session_loss: float = 1.0
     max_trades_session: int = 10
     signals_candidates: int = 0

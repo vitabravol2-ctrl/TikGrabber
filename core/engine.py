@@ -6,6 +6,7 @@ from core.models import MarketSnapshot
 from game_theory.engine import GameTheoryModule
 from market_state.fsm import MarketState, MarketStateEngine
 from metrics.microstructure import MicrostructureTracker
+from core.market_phase import MarketPhaseEngine
 
 
 class DataQualityGate:
@@ -66,6 +67,7 @@ class GameTheoryEngine:
         self._state_engine = MarketStateEngine()
         self._gt = GameTheoryModule()
         self._dq = DataQualityGate(self.BOOK_STALE_MS, self.DEPTH_STALE_MS)
+        self._phase = MarketPhaseEngine()
         self._edge_ema = 0.0
         self._trap_cooldown_until = 0.0
         self._prev_imbalance = 0.0
@@ -161,6 +163,26 @@ class GameTheoryEngine:
         snapshot.depth_age_ms = dq["depth_age_ms"]
         snapshot.can_trade_data = dq["can_trade_data"]
         snapshot.price_source = str(event.get("price_source", "BOOKTICKER"))
+
+        phase = self._phase.update(
+            regime=state.value,
+            edge=sig.edge_score,
+            buy_pressure=snapshot.buy_pressure,
+            sell_pressure=snapshot.sell_pressure,
+            trap=snapshot.trap,
+            sweep=max(snapshot.sweep_up, snapshot.sweep_down),
+            reclaim=snapshot.reclaim,
+            velocity=price_delta,
+            spread=m.spread,
+        )
+        snapshot.market_phase = phase.phase
+        snapshot.trap_score = phase.trap_score
+        snapshot.exhaustion_score = phase.exhaustion_score
+        snapshot.reversal_probability = phase.reversal_probability
+        snapshot.late_entry_risk = phase.late_entry_risk
+        snapshot.fomo_risk = phase.fomo_risk
+        snapshot.late_move_penalty = phase.late_move_penalty
+        snapshot.position_mode = "SCALP_REVERSAL" if phase.reversal_setup or phase.phase in {"REVERSAL", "EXHAUSTION"} else "SCALP_CONTINUATION"
         snapshot.ws_status = "Live"
         snapshot.timestamp = now
         return snapshot
