@@ -58,10 +58,14 @@ class SimulationState:
     fees_paid: float = 0.0
     net_pnl: float = 0.0
     net_ticks: float = 0.0
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
+    last_trade_pnl: float = 0.0
     cooldown_seconds_left: float = 0.0
     cooldown_active: bool = False
     last_trade_result: str = "-"
     hold_seconds: float = 0.0
+    last_hold_seconds: float = 0.0
     trades: int = 0
     wins: int = 0
     losses: int = 0
@@ -77,6 +81,10 @@ class SimulationState:
     edge_history: list[float] = field(default_factory=list)
     analytics: SignalAnalyticsState = field(default_factory=SignalAnalyticsState)
     active_trade_side: str = "-"
+    quantity: float = 0.0
+    notional: float = 100.0
+    leverage: float = 1.0
+    margin_used: float = 0.0
     tp_progress: float = 0.0
     sl_progress: float = 0.0
     last_event: str = "-"
@@ -121,8 +129,9 @@ class FuturesPositionModel:
     entry_price: float = 0.0
     mark_price: float = 0.0
     quantity: float = 0.0
-    notional_value: float = 0.0
+    notional_value: float = 100.0
     initial_margin: float = 0.0
+    margin_used: float = 0.0
     maintenance_margin: float = 0.0
     unrealized_pnl: float = 0.0
     liquidation_price: float = 0.0
