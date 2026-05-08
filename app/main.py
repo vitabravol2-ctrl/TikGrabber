@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.engine import GameTheoryEngine
 from core.models import MarketSnapshot
-from market.binance_ws import BinanceFeedThread
+from ws.binance_ws import BinanceFeedThread
 from simulation.paper import PaperSimulator
 from ui.dashboard import DashboardWindow
 
@@ -26,17 +26,9 @@ class AppController:
         self.window.render(self.snapshot, self.sim.state)
 
     def on_market_event(self, event: dict) -> None:
-        if event.get("type") != "trade":
+        if event.get("type") != "agg_trade":
             return
-        self.snapshot = self.engine.update(
-            self.snapshot,
-            price=event.get("price", 0.0),
-            bid=event.get("bid", 0.0),
-            ask=event.get("ask", 0.0),
-            buyer_maker=event.get("buyer_maker", False),
-            event_time_ms=event.get("event_time", 0),
-            depth_imbalance=event.get("imbalance", 0.0),
-        )
+        self.snapshot = self.engine.update(self.snapshot, event)
         sim_state = self.sim.step(self.snapshot)
         self.window.render(self.snapshot, sim_state)
 
